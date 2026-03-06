@@ -92,6 +92,37 @@ If Steam is installed in a non-standard location, set the `STEAM_ROOT` environme
 STEAM_ROOT=/path/to/steam npm start
 ```
 
+## Uninstall
+
+### 1. Remove the protocol handler
+
+```bash
+xdg-mime default '' x-scheme-handler/shiro
+```
+
+Then delete the desktop entry (if created by Electron):
+
+```bash
+rm -f ~/.local/share/applications/shiro-handler.desktop
+update-desktop-database ~/.local/share/applications/
+```
+
+### 2. Remove the CEF debugging marker (if it exists)
+
+Shiro creates a `.cef-enable-remote-debugging` file in your Steam directory to enable CEF remote debugging. Remove it if you no longer need it:
+
+```bash
+rm -f ~/.local/share/Steam/.cef-enable-remote-debugging
+```
+
+### 3. Delete Shiro
+
+```bash
+rm -rf /path/to/shiro
+```
+
+No system-wide files, services, or daemons are installed. All Shiro data (logs, backups) is stored within the project directory and cleaned up automatically.
+
 ## Security
 
 - Credentials are **never** persisted to disk by Shiro – only held in memory during the login flow

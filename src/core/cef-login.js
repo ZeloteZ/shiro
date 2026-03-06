@@ -419,11 +419,93 @@ async function loginViaCEFWithRetry(refreshToken, accountName, opts = {}) {
   );
 }
 
+/**
+ * Logout the currently logged-in Steam account via CEF remote debugging.
+ * Tries multiple approaches: SetLoginToken with empty values, then SteamClient.User methods.
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.cefTimeout]  How long to wait for CEF to come up (ms)
+ * @param {number} [opts.cdpTimeout]  How long to wait for the CDP call (ms)
+ * @returns {Promise<boolean>}  true if logout was performed, false if no user was logged in
+ */
+async function logoutViaCEF(opts = {}) {
+  const cefTimeout = opts.cefTimeout || CEF_POLL_TIMEOUT;
+  const cdpTimeout = opts.cdpTimeout || CDP_TIMEOUT;
+
+  log.info('[CEF] Waiting for Steam CEF to perform logout...');
+  const { port, targets } = await waitForCEF(cefTimeout);
+  log.info(`[CEF] Found ${targets.length} target(s) on port ${port}`);
+
+  // Sort targets by priority (SharedJSContext first).
+  const sorted = [...targets].filter((t) => t.webSocketDebuggerUrl);
+  sorted.sort((a, b) => {
+    const score = (t) => {
+      if (/SharedJSContext/i.test(t.title)) return 0;
+      if (/^SP\b/i.test(t.title)) return 1;
+      if (t.type === 'page') return 2;
+      return 3;
+    };
+    return score(a) - score(b);
+  });
+
+  const js = `
+    (async () => {
+      if (typeof SteamClient === 'undefined') {
+        return { error: 'SteamClient not available' };
+      }
+      try {
+        // Check if a user is currently logged in.
+        const hasAuth = SteamClient.Auth && typeof SteamClient.Auth.SetLoginToken === 'function';
+        if (!hasAuth) {
+          return { error: 'SteamClient.Auth not available' };
+        }
+        // Clear the login token to force logout.
+        await SteamClient.Auth.SetLoginToken('', '');
+        return { success: true, method: 'ClearToken' };
+      } catch (err) {
+        return { error: err.message || String(err) };
+      }
+    })()
+  `;
+
+  const errors = [];
+
+  for (const target of sorted) {
+    log.info(`[CEF] Trying logout on target: "${target.title}"...`);
+    try {
+      const value = await cdpEvaluate(target.webSocketDebuggerUrl, js, cdpTimeout);
+
+      if (!value || !value.value) {
+        errors.push(`${target.title}: unexpected result ${JSON.stringify(value)}`);
+        continue;
+      }
+
+      const result = value.value;
+
+      if (result.error) {
+        log.info(`[CEF] Target "${target.title}": ${result.error}`);
+        errors.push(`${target.title}: ${result.error}`);
+        continue;
+      }
+
+      log.info(`[CEF] \u2705 Logout via "${target.title}" (method: ${result.method})`);
+      return true;
+    } catch (err) {
+      log.warn(`[CEF] Target "${target.title}" error: ${err.message}`);
+      errors.push(`${target.title}: ${err.message}`);
+    }
+  }
+
+  log.warn(`[CEF] Logout failed on all targets:\n  ${errors.join('\n  ')}`);
+  return false;
+}
+
 module.exports = {
   enableCEFDebugging,
   waitForCEF,
   loginViaCEF,
   loginViaCEFWithRetry,
+  logoutViaCEF,
   CEF_PORTS,
   CEF_POLL_TIMEOUT,
 };

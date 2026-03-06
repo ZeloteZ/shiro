@@ -31,7 +31,7 @@ const {
 const { SteamBackup, getFilesToProtect } = require('./core/backup');
 const { killSteam, startSteam, waitForSteam } = require('./core/steam-process');
 const { SteamAuth } = require('./core/steam-auth');
-const { enableCEFDebugging, loginViaCEFWithRetry } = require('./core/cef-login');
+const { enableCEFDebugging, loginViaCEFWithRetry, logoutViaCEF } = require('./core/cef-login');
 
 // ---------------------------------------------------------------------------
 // State
@@ -214,15 +214,15 @@ async function handleLogin(protocolUrl) {
   let loginSuccess = false;
 
   // ===== PRIMARY METHOD: CEF Remote Debugging =====
-  // Start Steam with CEF debugging enabled and call SetLoginToken()
-  // directly via Chrome DevTools Protocol. This bypasses VDF/encryption.
+  // Flow: kill Steam → start with CEF → logout → kill → start with CEF → login
+  // This ensures any previously logged-in account is fully signed out first.
   try {
     log.info('[LOGIN] Attempting CEF remote debugging method...');
 
-    // Kill existing Steam first.
+    // --- Step 1: Kill existing Steam ---
     sendStatus('injecting', 'Stopping Steam...');
     try {
-      log.info('[STEAM] Killing Steam before CEF login...');
+      log.info('[STEAM] Killing Steam before logout...');
       await killSteam();
       log.info('[STEAM] Steam killed. Waiting 2s...');
       await new Promise((r) => setTimeout(r, 2000));
@@ -230,8 +230,8 @@ async function handleLogin(protocolUrl) {
       log.warn(`[STEAM] Kill issue (continuing): ${err.message}`);
     }
 
-    // Enable CEF remote debugging and start Steam.
-    sendStatus('restarting', 'Starting Steam with remote debugging...');
+    // --- Step 2: Start Steam with CEF for logout ---
+    sendStatus('restarting', 'Starting Steam to sign out current account...');
     const cefArgs = enableCEFDebugging(steamRoot);
     log.info(`[STEAM] Starting Steam with CEF args: ${cefArgs.join(' ')}`);
     startSteam(steamRoot, cefArgs);
@@ -240,11 +240,47 @@ async function handleLogin(protocolUrl) {
     log.info('[STEAM] Waiting for Steam process...');
     await waitForSteam(20000);
     log.info('[STEAM] Steam process detected. Waiting for CEF...');
-
-    // Give Steam a few extra seconds to fully initialize the UI.
     await new Promise((r) => setTimeout(r, 5000));
 
-    // Call SetLoginToken via CEF.
+    // --- Step 3: Logout via CEF ---
+    sendStatus('injecting', 'Signing out current account...');
+    try {
+      const loggedOut = await logoutViaCEF({
+        cefTimeout: 45000,
+        cdpTimeout: 15000,
+      });
+      if (loggedOut) {
+        log.info('[CEF] ✅ Logout successful');
+      } else {
+        log.info('[CEF] No active session to logout (continuing)');
+      }
+    } catch (err) {
+      log.warn(`[CEF] Logout attempt failed (continuing): ${err.message}`);
+    }
+
+    // --- Step 4: Kill Steam again ---
+    sendStatus('injecting', 'Stopping Steam after logout...');
+    try {
+      log.info('[STEAM] Killing Steam after logout...');
+      await killSteam();
+      log.info('[STEAM] Steam killed. Waiting 2s...');
+      await new Promise((r) => setTimeout(r, 2000));
+    } catch (err) {
+      log.warn(`[STEAM] Kill issue (continuing): ${err.message}`);
+    }
+
+    // --- Step 5: Start Steam with CEF again for login ---
+    sendStatus('restarting', 'Starting Steam with remote debugging...');
+    log.info(`[STEAM] Starting Steam with CEF args: ${cefArgs.join(' ')}`);
+    startSteam(steamRoot, cefArgs);
+
+    sendStatus('waiting', 'Waiting for Steam UI to load...');
+    log.info('[STEAM] Waiting for Steam process...');
+    await waitForSteam(20000);
+    log.info('[STEAM] Steam process detected. Waiting for CEF...');
+    await new Promise((r) => setTimeout(r, 5000));
+
+    // --- Step 6: Login via CEF ---
     sendStatus('injecting', 'Injecting login token via Steam API...');
     const result = await loginViaCEFWithRetry(refreshToken, account_name, {
       cefTimeout: 45000,
