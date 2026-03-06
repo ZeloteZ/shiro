@@ -1,7 +1,8 @@
-# Shiro 白 – Steam One-Click Login Tool
 
 
-<img width="356" height="122" alt="image" src="https://github.com/user-attachments/assets/a6657f17-fd81-4f58-9322-5b5b99dc7ca4" />
+<p align="center">
+  <img width="356" height="122" alt="image" src="https://github.com/user-attachments/assets/a6657f17-fd81-4f58-9322-5b5b99dc7ca4" />
+</p>
 
 
 Shiro is an Electron-based companion tool for [Kuroi](https://github.com/illumfx/kuroi) that enables one-click Steam account switching on Linux.
