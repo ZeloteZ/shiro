@@ -2,7 +2,7 @@
  * Shiro 白 – Steam One-Click Login Tool
  * Electron main process.
  *
- * Protocol handler: shiro://login?token=XXX&api=http://localhost:3000
+ * Protocol handler: shiro://login?token=XXX&api=https://kuroi.example.com
  *
  * Flow:
  *   1. OS opens shiro:// URL → Electron app starts
@@ -90,19 +90,45 @@ function sendStatus(status, message, data = {}) {
 // ---------------------------------------------------------------------------
 
 async function fetchCredentials(token, apiUrl) {
-  const url = `${apiUrl}/shiro/credentials/${encodeURIComponent(token)}`;
-  log.info(`[FETCH] GET ${url}`);
-  const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
-  log.info(`[FETCH] Response: ${resp.status} ${resp.statusText}`);
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => '');
-    throw new Error(
-      resp.status === 404
-        ? 'Login token expired or already used. Please try again from Kuroi.'
-        : `Failed to fetch credentials: ${resp.status} ${body}`
-    );
+  const endpoint = `/shiro/credentials/${encodeURIComponent(token)}`;
+
+  // Try the provided URL first. If it fails and was HTTP, retry with HTTPS.
+  // This handles servers that redirect http→https via non-standard schemes
+  // (e.g. Traefik's "websecure://") that fetch() cannot follow.
+  const urlsToTry = [apiUrl];
+  try {
+    const parsed = new URL(apiUrl);
+    if (parsed.protocol === 'http:') {
+      parsed.protocol = 'https:';
+      urlsToTry.push(parsed.toString().replace(/\/$/, ''));
+    }
+  } catch {}
+
+  let lastErr = null;
+  for (const base of urlsToTry) {
+    const url = `${base}${endpoint}`;
+    log.info(`[FETCH] GET ${url}`);
+    try {
+      const resp = await fetch(url, {
+        signal: AbortSignal.timeout(10000),
+        redirect: 'follow',
+      });
+      log.info(`[FETCH] Response: ${resp.status} ${resp.statusText}`);
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => '');
+        throw new Error(
+          resp.status === 404
+            ? 'Login token expired or already used. Please try again from Kuroi.'
+            : `Failed to fetch credentials: ${resp.status} ${body}`
+        );
+      }
+      return resp.json();
+    } catch (err) {
+      log.warn(`[FETCH] Failed for ${base}: ${err.message}`);
+      lastErr = err;
+    }
   }
-  return resp.json();
+  throw lastErr;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,6 +151,19 @@ async function handleLogin(protocolUrl) {
 
   if (!token) {
     sendStatus('error', 'No login token provided');
+    return;
+  }
+
+  // Validate API URL scheme.
+  try {
+    const parsed = new URL(apiUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      sendStatus('error', `Unsupported API protocol: ${parsed.protocol} (use http or https)`);
+      return;
+    }
+    log.info(`[PROTO] API: ${apiUrl} (${parsed.protocol})`);
+  } catch {
+    sendStatus('error', 'Invalid API URL');
     return;
   }
 
@@ -454,6 +493,21 @@ if (!gotTheLock) {
     }
   });
 }
+
+// Handle certificate errors (e.g. self-signed certs in development).
+// In production, only trusted CA certificates are accepted.
+app.on('certificate-error', (event, _webContents, url, _error, _cert, callback) => {
+  const parsed = new URL(url);
+  // Allow self-signed certs for localhost / 127.0.0.1 only.
+  if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+    log.warn(`[TLS] Accepting self-signed certificate for ${parsed.hostname}`);
+    event.preventDefault();
+    callback(true);
+  } else {
+    log.error(`[TLS] Rejecting certificate for ${url}`);
+    callback(false);
+  }
+});
 
 app.whenReady().then(() => {
   log.clear();
