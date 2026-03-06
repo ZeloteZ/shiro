@@ -52,6 +52,27 @@ npm run register
 
 This registers `shiro://` as a custom protocol so your OS can open Shiro when a `shiro://` URL is clicked.
 
+If the automatic registration does not work, you can manually create a Desktop Entry. Create the file `~/.local/share/applications/shiro.desktop` with the following content:
+
+```ini
+[Desktop Entry]
+Name=Shiro
+Comment=Steam One-Click Login Tool
+Exec=/path/to/shiro/node_modules/electron/dist/electron /path/to/shiro %u
+Type=Application
+MimeType=x-scheme-handler/shiro;
+NoDisplay=true
+```
+
+> **Note:** Replace `/path/to/shiro` with the actual path to your Shiro installation.
+
+Then register it and update the desktop database:
+
+```bash
+xdg-mime default shiro.desktop x-scheme-handler/shiro
+update-desktop-database ~/.local/share/applications/
+```
+
 ### Start Shiro
 
 Shiro is typically launched via a `shiro://` URL from Kuroi. To start it manually:
