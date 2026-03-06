@@ -1,0 +1,428 @@
+/* ===================================================================
+   Shiro 白 – Steam Login Tool – GUI Styles
+   Ethereal sky / cloud theme – light, airy, minimal.
+   =================================================================== */
+
+/* --- Reset & Base --- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+body {
+  background: linear-gradient(170deg, #dbeafe 0%, #eff6ff 35%, #f8fafc 65%, #ffffff 100%);
+  position: relative;
+}
+
+/* --- Drag region (frameless window) --- */
+.drag-region {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  -webkit-app-region: drag;
+  z-index: 1;
+}
+
+/* --- Decorative clouds --- */
+.clouds {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cloud {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+}
+
+.cloud-1 {
+  width: 220px;
+  height: 220px;
+  top: -70px;
+  left: -50px;
+  filter: blur(50px);
+  opacity: 0.8;
+  animation: cloud-drift-1 20s ease-in-out infinite alternate;
+}
+
+.cloud-2 {
+  width: 180px;
+  height: 180px;
+  top: 25%;
+  right: -60px;
+  filter: blur(60px);
+  opacity: 0.6;
+  animation: cloud-drift-2 25s ease-in-out infinite alternate;
+}
+
+.cloud-3 {
+  width: 200px;
+  height: 200px;
+  bottom: -40px;
+  left: 15%;
+  filter: blur(55px);
+  opacity: 0.5;
+  animation: cloud-drift-3 22s ease-in-out infinite alternate;
+}
+
+.cloud-4 {
+  width: 150px;
+  height: 150px;
+  top: 50%;
+  left: 60%;
+  filter: blur(45px);
+  opacity: 0.4;
+  animation: cloud-drift-4 18s ease-in-out infinite alternate;
+}
+
+@keyframes cloud-drift-1 {
+  from { transform: translate(0, 0); }
+  to { transform: translate(20px, 10px); }
+}
+@keyframes cloud-drift-2 {
+  from { transform: translate(0, 0); }
+  to { transform: translate(-15px, 8px); }
+}
+@keyframes cloud-drift-3 {
+  from { transform: translate(0, 0); }
+  to { transform: translate(12px, -6px); }
+}
+@keyframes cloud-drift-4 {
+  from { transform: translate(0, 0); }
+  to { transform: translate(-8px, -12px); }
+}
+
+/* --- Close button --- */
+.close-btn {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  transition: all 0.2s;
+  z-index: 100;
+  -webkit-app-region: no-drag;
+}
+
+.close-btn:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: #64748b;
+}
+
+.close-btn:active {
+  transform: scale(0.92);
+}
+
+/* --- Container --- */
+.container {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2.5rem 2rem;
+  -webkit-app-region: no-drag;
+}
+
+/* --- Header --- */
+.header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.title {
+  font-size: 2.4rem;
+  font-weight: 200;
+  color: #1e293b;
+  letter-spacing: 0.6rem;
+  line-height: 1.2;
+}
+
+.kanji {
+  font-weight: 100;
+  font-size: 2.8rem;
+  color: #3b82f6;
+  vertical-align: baseline;
+}
+
+.subtitle {
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-weight: 400;
+  letter-spacing: 0.25rem;
+  text-transform: uppercase;
+  margin-top: 0.4rem;
+}
+
+/* --- Status area --- */
+.status-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.2rem;
+  min-height: 120px;
+  justify-content: center;
+}
+
+/* Spinner */
+.spinner {
+  width: 48px;
+  height: 48px;
+  animation: rotate 1.4s linear infinite;
+}
+
+.spinner svg {
+  width: 100%;
+  height: 100%;
+}
+
+.spinner circle {
+  stroke: #3b82f6;
+  stroke-dasharray: 90, 150;
+  stroke-dashoffset: 0;
+  animation: dash 1.4s ease-in-out infinite;
+}
+
+@keyframes rotate {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dash {
+  0% {
+    stroke-dasharray: 1, 150;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -35;
+  }
+  100% {
+    stroke-dasharray: 90, 150;
+    stroke-dashoffset: -124;
+  }
+}
+
+/* Result icons */
+.result-icon {
+  width: 56px;
+  height: 56px;
+}
+
+.result-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.success-icon {
+  color: #22c55e;
+  animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.success-icon circle {
+  stroke-dasharray: 160;
+  stroke-dashoffset: 160;
+  animation: circle-draw 0.6s ease forwards 0.1s;
+}
+
+.success-icon path {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: check-draw 0.3s ease forwards 0.5s;
+}
+
+.error-icon {
+  color: #ef4444;
+  animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.idle-icon {
+  color: #94a3b8;
+  animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes pop-in {
+  0% { transform: scale(0); opacity: 0; }
+  80% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes circle-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Status text */
+.status-text {
+  color: #475569;
+  font-size: 0.95rem;
+  font-weight: 400;
+  text-align: center;
+  line-height: 1.5;
+  max-width: 300px;
+  transition: opacity 0.2s;
+}
+
+.status-text.success {
+  color: #16a34a;
+  font-weight: 500;
+}
+
+.status-text.error {
+  color: #dc2626;
+}
+
+/* --- Guard input area --- */
+.guard-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  max-width: 280px;
+  margin-top: 0.5rem;
+  animation: slide-up 0.3s ease;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.guard-prompt {
+  color: #64748b;
+  font-size: 0.82rem;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.guard-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 2px solid #cbd5e1;
+  border-radius: 14px;
+  font-size: 1.3rem;
+  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+  text-align: center;
+  letter-spacing: 0.5rem;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  color: #1e293b;
+}
+
+.guard-input::placeholder {
+  color: #cbd5e1;
+  letter-spacing: 0.15rem;
+  font-size: 0.95rem;
+}
+
+.guard-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.guard-submit {
+  width: 100%;
+  padding: 0.7rem;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.02rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+}
+
+.guard-submit:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+}
+
+.guard-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.guard-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* --- Error actions --- */
+.error-actions {
+  margin-top: 1rem;
+  animation: slide-up 0.3s ease;
+}
+
+.btn-secondary {
+  padding: 0.55rem 1.8rem;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(8px);
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: #94a3b8;
+}
+
+.btn-secondary:active {
+  transform: scale(0.97);
+}
+
+/* --- Transitions --- */
+.fade-in {
+  animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "shiro",
+  "version": "0.1.0",
+  "description": "Shiro 白 – Steam One-Click Login Tool",
+  "author": "ZeloteZ",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZeloteZ/shiro.git"
+  },
+  "keywords": ["steam", "login", "electron", "linux", "steam-guard"],
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "register": "electron . --register-protocol"
+  },
+  "dependencies": {
+    "steam-session": "^1.8.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

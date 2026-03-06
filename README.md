@@ -1,0 +1,76 @@
+# Shiro 白 – Steam One-Click Login Tool
+
+Shiro is an Electron-based companion tool for [Kuroi](https://github.com/ZeloteZ/kuroi) that enables one-click Steam account switching on Linux.
+
+## How it works
+
+1. Kuroi sends a `shiro://login?token=XXX&api=http://...` URL
+2. Shiro fetches encrypted credentials from the Kuroi backend (one-time token)
+3. Authenticates via [steam-session](https://www.npmjs.com/package/steam-session)
+4. If Steam Guard is required → shows input in GUI
+5. Logs in via **CEF Remote Debugging** (primary) or **VDF injection** (fallback)
+6. Restarts Steam → auto-closes
+
+## Features
+
+- **CEF Remote Debugging** – Calls `SteamClient.Auth.SetLoginToken()` directly via Chrome DevTools Protocol (no file manipulation needed)
+- **VDF Injection Fallback** – Writes encrypted tokens to Steam's VDF config files when CEF is unavailable
+- **Steam Guard Support** – Email codes, TOTP (mobile authenticator), and device confirmation
+- **Atomic File Writes** – VDF modifications use atomic rename to prevent corruption
+- **Backup & Restore** – All modified files are backed up before changes; restored on failure
+- **Secure Cleanup** – Backup files are zeroed out before deletion
+
+## Requirements
+
+- **Linux** (Steam path detection is Linux-only)
+- **Node.js** ≥ 18
+- **Steam** installed locally
+- **Kuroi** backend for credential management
+
+## Installation
+
+```bash
+git clone https://github.com/ZeloteZ/shiro.git
+cd shiro
+npm install
+```
+
+## Usage
+
+### Register the protocol handler
+
+```bash
+npm run register
+```
+
+This registers `shiro://` as a custom protocol so your OS can open Shiro when a `shiro://` URL is clicked.
+
+### Start Shiro
+
+Shiro is typically launched via a `shiro://` URL from Kuroi. To start it manually:
+
+```bash
+npm start
+```
+
+Shiro will sit in the system tray, waiting for a login request.
+
+### Custom Steam path
+
+If Steam is installed in a non-standard location, set the `STEAM_ROOT` environment variable:
+
+```bash
+STEAM_ROOT=/path/to/steam npm start
+```
+
+## Security
+
+- Credentials are **never** persisted to disk by Shiro – only held in memory during the login flow
+- Login tokens are fetched via **one-time tokens** that expire after use
+- VDF backup files are **securely wiped** (overwritten with zeros) before deletion
+- Backup directories use **restricted permissions** (0700)
+- Electron uses **context isolation**, **disabled node integration**, and a strict **Content Security Policy**
+
+## License
+
+[MIT](LICENSE)

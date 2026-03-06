@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'">
+  <title>Shiro 白</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Decorative clouds -->
+  <div class="clouds" aria-hidden="true">
+    <div class="cloud cloud-1"></div>
+    <div class="cloud cloud-2"></div>
+    <div class="cloud cloud-3"></div>
+    <div class="cloud cloud-4"></div>
+  </div>
+
+  <!-- Close button -->
+  <button class="close-btn" id="close-btn" title="Close">
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <path d="M1 1L11 11M1 11L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+  </button>
+
+  <!-- Main content -->
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1 class="title">SHIRO <span class="kanji">白</span></h1>
+      <p class="subtitle">powered by Kuroi 黒い</p>
+    </div>
+
+    <!-- Status area -->
+    <div class="status-area" id="status-area">
+      <!-- Spinner (shown during loading states) -->
+      <div class="spinner" id="spinner">
+        <svg viewBox="0 0 50 50">
+          <circle cx="25" cy="25" r="20" fill="none" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <!-- Success icon -->
+      <div class="result-icon success-icon" id="success-icon" style="display: none;">
+        <svg viewBox="0 0 52 52">
+          <circle cx="26" cy="26" r="25" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M14 27l7 7 16-16"/>
+        </svg>
+      </div>
+
+      <!-- Error icon -->
+      <div class="result-icon error-icon" id="error-icon" style="display: none;">
+        <svg viewBox="0 0 52 52">
+          <circle cx="26" cy="26" r="25" fill="none" stroke="currentColor" stroke-width="2"/>
+          <path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" d="M17 17l18 18M35 17l-18 18"/>
+        </svg>
+      </div>
+
+      <!-- Idle icon -->
+      <div class="result-icon idle-icon" id="idle-icon" style="display: none;">
+        <svg viewBox="0 0 52 52">
+          <circle cx="26" cy="26" r="25" fill="none" stroke="currentColor" stroke-width="2"/>
+          <circle cx="26" cy="26" r="4" fill="currentColor"/>
+        </svg>
+      </div>
+
+      <!-- Status text -->
+      <p class="status-text" id="status-text">Starting...</p>
+    </div>
+
+    <!-- Guard code input (hidden by default) -->
+    <div class="guard-area" id="guard-area" style="display: none;">
+      <div class="guard-prompt" id="guard-prompt"></div>
+      <input
+        type="text"
+        class="guard-input"
+        id="guard-code"
+        placeholder="Enter code"
+        maxlength="8"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <button class="guard-submit" id="guard-submit" disabled>
+        Submit Code
+      </button>
+    </div>
+
+    <!-- Error actions (hidden by default) -->
+    <div class="error-actions" id="error-actions" style="display: none;">
+      <button class="btn-secondary" id="close-error-btn">Close</button>
+    </div>
+  </div>
+
+  <!-- Drag region (entire window minus interactive elements) -->
+  <div class="drag-region" aria-hidden="true"></div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
