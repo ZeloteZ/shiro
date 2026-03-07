@@ -9,7 +9,7 @@
  *   2. Fetch credentials from Kuroi backend (one-time token)
  *   3. Authenticate via steam-session
  *   4. If guard needed → show input in GUI
- *   5. Inject token → restart Steam → restore VDFs → auto-close
+ *   5. Inject token via CEF → auto-close
  */
 
 'use strict';
@@ -20,15 +20,6 @@ const log = require('./core/log');
 
 // Core modules
 const { getSteamRoot } = require('./core/config');
-const { encryptConnectCache } = require('./core/crypto');
-const { extractSteamId64 } = require('./core/token-utils');
-const {
-  writeConnectCache,
-  updateLoginusers,
-  setAutoLoginUser,
-  ensureConfigAccounts,
-} = require('./core/vdf');
-const { SteamBackup, getFilesToProtect } = require('./core/backup');
 const { killSteam, startSteam, waitForSteam } = require('./core/steam-process');
 const { SteamAuth } = require('./core/steam-auth');
 const { enableCEFDebugging, loginViaCEFWithRetry, logoutViaCEF } = require('./core/cef-login');
@@ -39,7 +30,6 @@ const { enableCEFDebugging, loginViaCEFWithRetry, logoutViaCEF } = require('./co
 
 let mainWindow = null;
 let currentAuth = null;
-let backup = null;
 let tray = null;
 
 // ---------------------------------------------------------------------------
@@ -195,9 +185,7 @@ async function handleLogin(protocolUrl) {
     return;
   }
 
-  // --- Phase 3: (VDF backup is deferred to fallback path if needed) ---
-
-  // --- Phase 4: Authenticate ---
+  // --- Phase 3: Authenticate ---
   sendStatus('authenticating', `Logging in as ${account_name}...`);
 
   currentAuth = new SteamAuth();
@@ -243,16 +231,14 @@ async function handleLogin(protocolUrl) {
     refreshToken = authResult.refreshToken;
   } catch (err) {
     sendStatus('error', err.message);
-    _restoreAndCleanup();
+    _cleanup();
     return;
   }
 
-  // --- Phase 5: CEF Login (primary) or VDF injection (fallback) ---
+  // --- Phase 4: CEF Login ---
   sendStatus('injecting', 'Preparing Steam login...');
 
-  let loginSuccess = false;
-
-  // ===== PRIMARY METHOD: CEF Remote Debugging =====
+  // ===== CEF Remote Debugging =====
   // Flow: kill Steam → start with CEF → logout → kill → start with CEF → login
   // This ensures any previously logged-in account is fully signed out first.
   try {
@@ -327,67 +313,16 @@ async function handleLogin(protocolUrl) {
     });
 
     log.info(`[CEF] ✅ Login successful! result=${result.result}`);
-    loginSuccess = true;
   } catch (err) {
-    log.warn(`[CEF] ❌ CEF method failed: ${err.message}`);
-    log.info('[LOGIN] Falling back to VDF injection method...');
+    log.error(`[CEF] ❌ CEF login failed: ${err.message}`);
+    sendStatus('error', `Login failed: ${err.message}`);
+    _cleanup();
+    return;
   }
 
-  // ===== FALLBACK METHOD: VDF Injection =====
-  // Write encrypted token to VDF files (traditional approach).
-  if (!loginSuccess) {
-    try {
-      // Kill Steam again if it was started by the CEF attempt.
-      sendStatus('injecting', 'Stopping Steam for VDF injection...');
-      try {
-        await killSteam();
-        await new Promise((r) => setTimeout(r, 2000));
-      } catch {}
-
-      // Backup VDFs.
-      backup = new SteamBackup(steamRoot);
-      backup.setup();
-      const filesToProtect = getFilesToProtect(steamRoot);
-      log.info(`[BACKUP] Protecting ${filesToProtect.length} files`);
-      for (const f of filesToProtect) {
-        backup.protect(f);
-      }
-
-      sendStatus('injecting', 'Injecting login token into VDF files...');
-      const steamId64 = extractSteamId64(refreshToken);
-      log.info(`[INJECT] SteamID64: ${steamId64}`);
-      const encryptedHex = encryptConnectCache(account_name, refreshToken);
-      log.info(`[INJECT] Encrypted token: ${encryptedHex.length} hex chars`);
-
-      writeConnectCache(steamRoot, account_name, encryptedHex);
-      updateLoginusers(steamRoot, account_name, steamId64, personaName);
-      setAutoLoginUser(steamRoot, account_name);
-      ensureConfigAccounts(steamRoot, account_name, steamId64);
-      log.info('[INJECT] ✅ All VDF writes complete');
-
-      await new Promise((r) => setTimeout(r, 1000));
-
-      // Start Steam.
-      sendStatus('restarting', 'Starting Steam...');
-      startSteam(steamRoot);
-      sendStatus('waiting', 'Waiting for Steam to start...');
-      await waitForSteam(15000);
-      await new Promise((r) => setTimeout(r, 5000));
-      log.info('[STEAM] ✅ Steam started (VDF fallback)');
-      loginSuccess = true;
-    } catch (err) {
-      log.error(`[INJECT] ❌ VDF injection failed: ${err.message}`);
-      sendStatus('error', `Login failed: ${err.message}`);
-      _restoreAndCleanup();
-      return;
-    }
-  }
-
-  // --- Phase 6: Cleanup ---
-  if (loginSuccess) {
-    log.info('[CLEANUP] Success path – cleaning up');
-    _cleanupWithoutRestore();
-  }
+  // --- Phase 5: Cleanup ---
+  log.info('[CLEANUP] Success path – cleaning up');
+  _cleanup();
 
   // --- Done! ---
   log.info(`=== LOGIN FLOW COMPLETE ✅ – account: ${account_name} ===`);
@@ -403,33 +338,10 @@ async function handleLogin(protocolUrl) {
 }
 
 /**
- * Restore VDFs to original state and cleanup – used on FAILURE only.
- * Undoes all VDF modifications so the user's Steam stays untouched.
+ * Cleanup auth session resources.
  */
-function _restoreAndCleanup() {
-  log.info('[CLEANUP] Failure path – restoring original VDFs');
-  if (backup) {
-    try { backup.restoreAll(); log.info('[CLEANUP] VDFs restored'); } catch (err) { log.error(`[CLEANUP] Restore error: ${err.message}`); }
-    try { backup.cleanup(); } catch {}
-    backup = null;
-  }
-  if (currentAuth) {
-    currentAuth.destroy();
-    currentAuth = null;
-  }
-}
-
-/**
- * Cleanup WITHOUT restoring VDFs – used on SUCCESS.
- * The modified VDFs (ConnectCache, loginusers, registry, config)
- * must remain so Steam picks up the injected login token.
- */
-function _cleanupWithoutRestore() {
-  log.info('[CLEANUP] Discarding backups (keeping modified VDFs)');
-  if (backup) {
-    try { backup.cleanup(); log.info('[CLEANUP] Backup files removed'); } catch {}
-    backup = null;
-  }
+function _cleanup() {
+  log.info('[CLEANUP] Cleaning up');
   if (currentAuth) {
     currentAuth.destroy();
     currentAuth = null;
@@ -459,7 +371,7 @@ ipcMain.on('shiro:submit-guard', async (_event, code) => {
 
 ipcMain.on('shiro:close', () => {
   log.info('[IPC] Close requested by renderer');
-  _restoreAndCleanup();
+  _cleanup();
   app.quit();
 });
 
@@ -480,7 +392,7 @@ if (!gotTheLock) {
       log.info(`[LIFECYCLE] New protocol URL: ${url}`);
       // Close any existing window and start a new login.
       if (mainWindow) mainWindow.close();
-      _restoreAndCleanup();
+      _cleanup();
       createWindow();
       // Wait for window to load before sending status.
       mainWindow.webContents.once('did-finish-load', () => {
@@ -544,7 +456,7 @@ app.whenReady().then(() => {
     {
       label: 'Beenden',
       click: () => {
-        _restoreAndCleanup();
+        _cleanup();
         tray.destroy();
         app.quit();
       },

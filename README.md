@@ -16,17 +16,13 @@ Shiro is an Electron-based companion tool for [Kuroi](https://github.com/illumfx
 2. Shiro fetches encrypted credentials from the Kuroi backend (one-time token)
 3. Authenticates via [steam-session](https://www.npmjs.com/package/steam-session)
 4. If Steam Guard is required → shows input in GUI
-5. Logs in via **CEF Remote Debugging** (primary) or **VDF injection** (fallback)
+5. Logs in via **CEF Remote Debugging**
 6. Restarts Steam → auto-closes
 
 ## Features
 
 - **CEF Remote Debugging** – Calls `SteamClient.Auth.SetLoginToken()` directly via Chrome DevTools Protocol (no file manipulation needed)
-- **VDF Injection Fallback** – Writes encrypted tokens to Steam's VDF config files when CEF is unavailable
 - **Steam Guard Support** – Email codes, TOTP (mobile authenticator), and device confirmation
-- **Atomic File Writes** – VDF modifications use atomic rename to prevent corruption
-- **Backup & Restore** – All modified files are backed up before changes; restored on failure
-- **Secure Cleanup** – Backup files are zeroed out before deletion
 
 ## Requirements
 
@@ -121,14 +117,12 @@ rm -f ~/.local/share/Steam/.cef-enable-remote-debugging
 rm -rf /path/to/shiro
 ```
 
-No system-wide files, services, or daemons are installed. All Shiro data (logs, backups) is stored within the project directory and cleaned up automatically.
+No system-wide files, services, or daemons are installed. All Shiro data (logs) is stored within the project directory and cleaned up automatically.
 
 ## Security
 
 - Credentials are **never** persisted to disk by Shiro – only held in memory during the login flow
 - Login tokens are fetched via **one-time tokens** that expire after use
-- VDF backup files are **securely wiped** (overwritten with zeros) before deletion
-- Backup directories use **restricted permissions** (0700)
 - Electron uses **context isolation**, **disabled node integration**, and a strict **Content Security Policy**
 
 ## Uninstall
@@ -160,7 +154,7 @@ rm -f ~/.local/share/Steam/.cef-enable-remote-debugging
 rm -rf /path/to/shiro
 ```
 
-No system-wide files, services, or daemons are installed. All Shiro data (logs, backups) is stored within the project directory and cleaned up automatically.
+No system-wide files, services, or daemons are installed. All Shiro data (logs) is stored within the project directory and cleaned up automatically.
 
 
 ## License

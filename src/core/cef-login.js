@@ -2,8 +2,7 @@
  * CEF Remote Debugging login – calls SteamClient.Auth.SetLoginToken()
  * directly via Chrome DevTools Protocol.
  *
- * This bypasses VDF file manipulation and encryption entirely,
- * using Steam's own internal IPC to set the login token.
+ * This uses Steam's own internal IPC to set the login token.
  *
  * Requires Steam to be started with CEF remote debugging enabled
  * (e.g. via -cef-enable-remote-debugging flag or .cef-enable-remote-debugging marker file).
