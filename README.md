@@ -126,10 +126,16 @@ npm run dist:win
 **Linux:**
 
 ```bash
-xdg-mime default '' x-scheme-handler/shiro
-rm -f ~/.local/share/applications/shiro-handler.desktop
+for file in ~/.config/mimeapps.list ~/.local/share/applications/mimeapps.list; do
+  [ -f "$file" ] && sed -i '/x-scheme-handler\/shiro/d' "$file"
+done
+rm -f ~/.local/share/applications/shiro.desktop
 update-desktop-database ~/.local/share/applications/
 ```
+
+`xdg-mime` can register a default handler, but it cannot unset one by assigning an empty desktop file. Removing the `x-scheme-handler/shiro` entry from `mimeapps.list` is the reliable way to deregister it.
+
+If you still see `shiro.desktop` in `~/.local/share/applications/mimeinfo.cache`, that file is only a generated cache of available handlers. The actual default association is stored in `mimeapps.list`, and `update-desktop-database ~/.local/share/applications/` rebuilds the cache after the desktop file is removed.
 
 **Windows:** The `shiro://` protocol handler is stored in the Windows Registry under `HKCU\Software\Classes\shiro`. It is removed automatically when uninstalling Electron, or you can delete the key manually via `regedit`.
 
