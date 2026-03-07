@@ -326,6 +326,7 @@ async function handleLogin(protocolUrl) {
   currentAuth = new SteamAuth();
 
   let refreshToken;
+  let steamId64 = null;
   let personaName = persona_name || account_name;
   try {
     const authResult = await new Promise((resolve, reject) => {
@@ -364,6 +365,7 @@ async function handleLogin(protocolUrl) {
       currentAuth.startLogin(account_name, password).catch(reject);
     });
     refreshToken = authResult.refreshToken;
+    steamId64 = authResult.steamID?.getSteamID64?.() || authResult.steamID?.toString?.() || null;
   } catch (err) {
     sendStatus('error', err.message);
     _cleanup();
@@ -396,7 +398,7 @@ async function handleLogin(protocolUrl) {
 
     // On Linux, killing Steam does NOT log out the user, so we need an
     // explicit CEF logout cycle before the actual login.
-    /*if (!isWindows) {
+    if (!isWindows) {
       // --- Step 2 (Linux): Start Steam with CEF for logout ---
       sendStatus('restarting', 'Starting Steam to sign out current account...');
       log.info(`[STEAM] Starting Steam with CEF args: ${cefArgs.join(' ')}`);
@@ -436,7 +438,7 @@ async function handleLogin(protocolUrl) {
       }
     } else {
       log.info('[STEAM] Windows: killing Steam auto-logs out – skipping CEF logout cycle');
-    }*/
+    }
 
     // --- Start Steam with CEF for login ---
     sendStatus('restarting', 'Starting Steam with remote debugging...');
@@ -451,7 +453,9 @@ async function handleLogin(protocolUrl) {
 
     // --- Step 6: Login via CEF ---
     sendStatus('injecting', 'Injecting login token via Steam API...');
-    const result = await loginViaCEFWithRetry(refreshToken, account_name, {
+    const loginIds = [steamId64, account_name].filter(Boolean);
+    log.info(`[CEF] Login identifiers: ${loginIds.join(', ')}`);
+    const result = await loginViaCEFWithRetry(refreshToken, loginIds, {
       cefTimeout: 45000,
       cdpTimeout: 15000,
     });

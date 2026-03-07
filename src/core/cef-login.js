@@ -273,15 +273,20 @@ function cdpEvaluate(wsUrl, expression, timeout = CDP_TIMEOUT) {
  * Login to Steam by calling SteamClient.Auth.SetLoginToken() via CEF remote debugging.
  *
  * @param {string} refreshToken  The JWT refresh token from steam-session
- * @param {string} accountName   The Steam account name
+ * @param {string|string[]} loginIds   Preferred login identifier(s), e.g. SteamID64 and account name
  * @param {object} [opts]
  * @param {number} [opts.cefTimeout]  How long to wait for CEF to come up (ms)
  * @param {number} [opts.cdpTimeout]  How long to wait for the CDP call (ms)
  * @returns {Promise<{result: number, message: string}>}
  */
-async function loginViaCEF(refreshToken, accountName, opts = {}) {
+async function loginViaCEF(refreshToken, loginIds, opts = {}) {
   const cefTimeout = opts.cefTimeout || CEF_POLL_TIMEOUT;
   const cdpTimeout = opts.cdpTimeout || CDP_TIMEOUT;
+  const identifiers = Array.isArray(loginIds) ? loginIds.filter(Boolean) : [loginIds].filter(Boolean);
+
+  if (identifiers.length === 0) {
+    throw new Error('No login identifier available for Steam token injection');
+  }
 
   // 1. Wait for CEF debugging to become available.
   log.info('[CEF] Waiting for Steam CEF debugging endpoint...');
@@ -308,7 +313,7 @@ async function loginViaCEF(refreshToken, accountName, opts = {}) {
       try {
         const res = await SteamClient.Auth.SetLoginToken(
           ${JSON.stringify(refreshToken)},
-          ${JSON.stringify(accountName)}
+          ${JSON.stringify(identifiers[0])}
         );
         return { result: res.result, message: res.message || '' };
       } catch (err) {
@@ -348,9 +353,14 @@ async function loginViaCEF(refreshToken, accountName, opts = {}) {
  * Retry loginViaCEF across all available targets until one works.
  * This handles the case where SteamClient.Auth isn't available in the first target.
  */
-async function loginViaCEFWithRetry(refreshToken, accountName, opts = {}) {
+async function loginViaCEFWithRetry(refreshToken, loginIds, opts = {}) {
   const cefTimeout = opts.cefTimeout || CEF_POLL_TIMEOUT;
   const cdpTimeout = opts.cdpTimeout || CDP_TIMEOUT;
+  const identifiers = Array.isArray(loginIds) ? [...new Set(loginIds.filter(Boolean))] : [loginIds].filter(Boolean);
+
+  if (identifiers.length === 0) {
+    throw new Error('No login identifier available for Steam token injection');
+  }
 
   log.info('[CEF] Waiting for Steam CEF debugging endpoint...');
   const { port, targets } = await waitForCEF(cefTimeout);
@@ -377,54 +387,59 @@ async function loginViaCEFWithRetry(refreshToken, accountName, opts = {}) {
   for (const target of sorted) {
     log.info(`[CEF] Trying target: "${target.title}"...`);
 
-    const js = `
-      (async () => {
-        if (typeof SteamClient === 'undefined' || !SteamClient.Auth) {
-          return { error: 'SteamClient.Auth not available' };
+    for (const loginId of identifiers) {
+      const js = `
+        (async () => {
+          if (typeof SteamClient === 'undefined' || !SteamClient.Auth) {
+            return { error: 'SteamClient.Auth not available' };
+          }
+          try {
+            const res = await SteamClient.Auth.SetLoginToken(
+              ${JSON.stringify(refreshToken)},
+              ${JSON.stringify(loginId)}
+            );
+            return { result: res.result, message: res.message || '' };
+          } catch (err) {
+            return { error: err.message || String(err) };
+          }
+        })()
+      `;
+
+      try {
+        log.info(`[CEF] Trying login identifier "${loginId}" on target "${target.title}"...`);
+        const value = await cdpEvaluate(target.webSocketDebuggerUrl, js, cdpTimeout);
+
+        if (!value || !value.value) {
+          errors.push(`${target.title} (${loginId}): unexpected result ${JSON.stringify(value)}`);
+          continue;
         }
-        try {
-          const res = await SteamClient.Auth.SetLoginToken(
-            ${JSON.stringify(refreshToken)},
-            ${JSON.stringify(accountName)}
-          );
-          return { result: res.result, message: res.message || '' };
-        } catch (err) {
-          return { error: err.message || String(err) };
+
+        const loginResult = value.value;
+
+        if (loginResult.error) {
+          log.info(`[CEF] Target "${target.title}" (${loginId}): ${loginResult.error}`);
+          errors.push(`${target.title} (${loginId}): ${loginResult.error}`);
+          continue;
         }
-      })()
-    `;
 
-    try {
-      const value = await cdpEvaluate(target.webSocketDebuggerUrl, js, cdpTimeout);
-
-      if (!value || !value.value) {
-        errors.push(`${target.title}: unexpected result ${JSON.stringify(value)}`);
-        continue;
-      }
-
-      const loginResult = value.value;
-
-      if (loginResult.error) {
-        log.info(`[CEF] Target "${target.title}": ${loginResult.error}`);
-        errors.push(`${target.title}: ${loginResult.error}`);
-        continue;
-      }
-
-      log.info(
-        `[CEF] ✅ SetLoginToken via "${target.title}" → result=${loginResult.result}, message="${loginResult.message}"`
-      );
-
-      if (loginResult.result !== 1) {
-        throw new Error(
-          `Steam rejected the login token (result=${loginResult.result}, msg="${loginResult.message}")`
+        log.info(
+          `[CEF] ✅ SetLoginToken via "${target.title}" (${loginId}) → result=${loginResult.result}, message="${loginResult.message}"`
         );
-      }
 
-      return loginResult;
-    } catch (err) {
-      if (err.message.includes('Steam rejected')) throw err; // Don't retry on actual rejection.
-      log.warn(`[CEF] Target "${target.title}" error: ${err.message}`);
-      errors.push(`${target.title}: ${err.message}`);
+        if (loginResult.result !== 1) {
+          throw new Error(
+            `Steam rejected the login token (result=${loginResult.result}, msg="${loginResult.message}")`
+          );
+        }
+
+        return loginResult;
+      } catch (err) {
+        if (err.message.includes('Steam rejected') && loginId === identifiers[identifiers.length - 1]) {
+          throw err;
+        }
+        log.warn(`[CEF] Target "${target.title}" (${loginId}) error: ${err.message}`);
+        errors.push(`${target.title} (${loginId}): ${err.message}`);
+      }
     }
   }
 
