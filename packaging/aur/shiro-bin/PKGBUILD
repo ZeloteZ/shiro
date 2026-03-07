@@ -1,17 +1,17 @@
 pkgname=shiro-bin
-pkgver=0.1.0
-pkgrel=4
+pkgver=1.0.0
+pkgrel=1
 pkgdesc='Steam one-click login companion for Kuroi'
 arch=('x86_64')
-url='https://github.com/illumfx/shiro'
+url='https://github.com/ZeloteZ/shiro'
 license=('MIT')
 depends=('alsa-lib' 'at-spi2-core' 'gtk3' 'libdrm' 'libsecret' 'libx11' 'libxcb' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa' 'nss' 'xdg-utils')
 options=(!strip)
 install=shiro-bin.install
 _appimage="Shiro-${pkgver}.AppImage"
 source=(
-  "${_appimage}::https://github.com/illumfx/shiro/releases/download/v${pkgver}/${_appimage}"
-  "LICENSE::https://raw.githubusercontent.com/illumfx/shiro/v${pkgver}/LICENSE"
+  "${_appimage}::https://github.com/ZeloteZ/shiro/releases/download/v${pkgver}/${_appimage}"
+  "LICENSE::https://raw.githubusercontent.com/ZeloteZ/shiro/v${pkgver}/LICENSE"
 )
 sha256sums=('SKIP' 'SKIP')
 
