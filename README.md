@@ -1,5 +1,3 @@
-
-
 <p align="center">
   <img width="356" height="122" alt="image" src="https://github.com/user-attachments/assets/a6657f17-fd81-4f58-9322-5b5b99dc7ca4" />
 </p>
@@ -120,15 +118,6 @@ Platform-specific builds:
 npm run dist:linux
 npm run dist:win
 ```
-
-Artifacts are written to `dist/`.
-
-> [!NOTE]
-> Electron Builder uses [assets/icon.ico](assets/icon.ico) for Windows installers and the generated PNG set in [assets/icons](assets/icons) for Linux packages.
-
-## CI builds
-
-GitHub Actions can build Linux and Windows packages automatically. The workflow runs manually via `workflow_dispatch` and on version tags such as `v0.1.0`.
 
 ## Uninstall
 

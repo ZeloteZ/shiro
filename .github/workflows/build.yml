@@ -49,7 +49,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.exe
           if-no-files-found: error
 
   release:
@@ -66,9 +69,19 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          cd release-artifacts
+          sha256sum *.AppImage *.deb *.exe > SHA256SUMS.txt
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-artifacts/**
+          files: |
+            release-artifacts/*.AppImage
+            release-artifacts/*.deb
+            release-artifacts/*.exe
+            release-artifacts/SHA256SUMS.txt
           generate_release_notes: true
           fail_on_unmatched_files: true
