@@ -12,7 +12,9 @@ shiro.log
 # Build / Distribution
 dist/
 out/
-build/
+build/*
+!build/installer.nsh
+!build/deb-after-remove.sh
 
 # Electron
 .electron/
