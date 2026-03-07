@@ -1,9 +1,10 @@
 /**
  * Steam process management – kill, start, wait.
+ * Supports Linux and Windows.
  *
  * SECURITY:
  * - The Steam executable path is validated against the known Steam root.
- * - Process operations use graceful shutdown first (SIGTERM before SIGKILL).
+ * - Process operations use graceful shutdown first.
  */
 
 'use strict';
@@ -11,6 +12,8 @@
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+
+const IS_WIN = process.platform === 'win32';
 
 class ProcessError extends Error {
   constructor(message) {
@@ -23,11 +26,23 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ---------------------------------------------------------------------------
+// Platform-specific helpers
+// ---------------------------------------------------------------------------
+
 /** Check if any Steam client process is currently running. */
 function isSteamRunning() {
   try {
-    execSync('pgrep -x steam', { stdio: 'pipe' });
-    return true;
+    if (IS_WIN) {
+      const output = execSync(
+        'tasklist /FI "IMAGENAME eq steam.exe" /NH',
+        { encoding: 'utf8', stdio: 'pipe' }
+      );
+      return output.toLowerCase().includes('steam.exe');
+    } else {
+      execSync('pgrep -x steam', { stdio: 'pipe' });
+      return true;
+    }
   } catch {
     return false;
   }
@@ -36,15 +51,33 @@ function isSteamRunning() {
 /** Return a list of Steam-related process IDs. */
 function _getSteamPids() {
   const pids = new Set();
-  for (const name of ['steam', 'steamwebhelper', 'steam-runtime']) {
-    try {
-      const output = execSync(`pgrep -f ${name}`, { encoding: 'utf8', stdio: 'pipe' });
-      for (const line of output.trim().split('\n')) {
-        const pid = parseInt(line.trim(), 10);
-        if (!isNaN(pid)) pids.add(pid);
-      }
-    } catch {}
+
+  if (IS_WIN) {
+    // On Windows, use WMIC to get PIDs for Steam processes.
+    for (const name of ['steam.exe', 'steamwebhelper.exe']) {
+      try {
+        const output = execSync(
+          `wmic process where "name='${name}'" get ProcessId /FORMAT:LIST`,
+          { encoding: 'utf8', stdio: 'pipe' }
+        );
+        for (const match of output.matchAll(/ProcessId=(\d+)/gi)) {
+          const pid = parseInt(match[1], 10);
+          if (!isNaN(pid) && pid > 0) pids.add(pid);
+        }
+      } catch {}
+    }
+  } else {
+    for (const name of ['steam', 'steamwebhelper', 'steam-runtime']) {
+      try {
+        const output = execSync(`pgrep -f ${name}`, { encoding: 'utf8', stdio: 'pipe' });
+        for (const line of output.trim().split('\n')) {
+          const pid = parseInt(line.trim(), 10);
+          if (!isNaN(pid)) pids.add(pid);
+        }
+      } catch {}
+    }
   }
+
   return [...pids].sort((a, b) => a - b);
 }
 
@@ -60,32 +93,59 @@ async function _waitForExit(timeout = 5000) {
 
 /**
  * Gracefully shut down the Steam client, escalating to force-kill.
- * 1. steam -shutdown (graceful)
- * 2. Wait → SIGTERM
- * 3. Wait → SIGKILL
+ *
+ * Linux:   steam -shutdown → SIGTERM → SIGKILL
+ * Windows: steam.exe -shutdown → taskkill graceful → taskkill /F
  */
 async function killSteam(timeout = 5000) {
   if (!isSteamRunning()) return;
 
-  // Step 1: Graceful shutdown.
+  // Step 1: Graceful shutdown via Steam's own command.
   try {
-    execSync('steam -shutdown', { stdio: 'pipe', timeout: 10000 });
+    if (IS_WIN) {
+      // Try to find steam.exe and run -shutdown.
+      const pids = _getSteamPids();
+      if (pids.length > 0) {
+        try {
+          execSync('steam.exe -shutdown', { stdio: 'pipe', timeout: 10000, shell: true });
+        } catch {
+          // If steam.exe isn't in PATH, try taskkill gracefully.
+          for (const pid of pids) {
+            try { execSync(`taskkill /PID ${pid}`, { stdio: 'pipe' }); } catch {}
+          }
+        }
+      }
+    } else {
+      execSync('steam -shutdown', { stdio: 'pipe', timeout: 10000 });
+    }
   } catch {}
 
   if (await _waitForExit(timeout)) return;
 
-  // Step 2: SIGTERM.
+  // Step 2: Send termination signal.
   const pids = _getSteamPids();
-  for (const pid of pids) {
-    try { process.kill(pid, 'SIGTERM'); } catch {}
+  if (IS_WIN) {
+    for (const pid of pids) {
+      try { execSync(`taskkill /PID ${pid}`, { stdio: 'pipe' }); } catch {}
+    }
+  } else {
+    for (const pid of pids) {
+      try { process.kill(pid, 'SIGTERM'); } catch {}
+    }
   }
 
   if (await _waitForExit(timeout)) return;
 
-  // Step 3: SIGKILL.
+  // Step 3: Force-kill.
   const remaining = _getSteamPids();
-  for (const pid of remaining) {
-    try { process.kill(pid, 'SIGKILL'); } catch {}
+  if (IS_WIN) {
+    for (const pid of remaining) {
+      try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'pipe' }); } catch {}
+    }
+  } else {
+    for (const pid of remaining) {
+      try { process.kill(pid, 'SIGKILL'); } catch {}
+    }
   }
 
   if (await _waitForExit(timeout)) return;
@@ -99,25 +159,44 @@ async function killSteam(timeout = 5000) {
  * @returns {string}
  */
 function _findSteamExecutable(steamRoot) {
-  const candidates = [
-    path.join(steamRoot, 'steam.sh'),
-    path.join(steamRoot, 'steam'),
-  ];
+  if (IS_WIN) {
+    const candidates = [
+      path.join(steamRoot, 'steam.exe'),
+    ];
 
-  for (const c of candidates) {
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+
+    // Fallback: check PATH.
     try {
-      fs.accessSync(c, fs.constants.X_OK);
-      return fs.realpathSync(c);
+      const output = execSync('where steam.exe', { encoding: 'utf8', stdio: 'pipe' }).trim();
+      const first = output.split('\n')[0].trim();
+      if (first && fs.existsSync(first)) return first;
     } catch {}
+
+    throw new ProcessError(`Steam executable not found in ${steamRoot} or system PATH`);
+  } else {
+    const candidates = [
+      path.join(steamRoot, 'steam.sh'),
+      path.join(steamRoot, 'steam'),
+    ];
+
+    for (const c of candidates) {
+      try {
+        fs.accessSync(c, fs.constants.X_OK);
+        return fs.realpathSync(c);
+      } catch {}
+    }
+
+    // Fallback: check PATH.
+    try {
+      const systemSteam = execSync('which steam', { encoding: 'utf8', stdio: 'pipe' }).trim();
+      if (systemSteam) return fs.realpathSync(systemSteam);
+    } catch {}
+
+    throw new ProcessError(`Steam executable not found in ${steamRoot} or system PATH`);
   }
-
-  // Fallback: check PATH.
-  try {
-    const systemSteam = execSync('which steam', { encoding: 'utf8', stdio: 'pipe' }).trim();
-    if (systemSteam) return fs.realpathSync(systemSteam);
-  } catch {}
-
-  throw new ProcessError(`Steam executable not found in ${steamRoot} or system PATH`);
 }
 
 /**
@@ -129,11 +208,23 @@ function startSteam(steamRoot, extraArgs = []) {
   if (isSteamRunning()) return;
 
   const exe = _findSteamExecutable(steamRoot);
-  const child = spawn(exe, extraArgs, {
-    detached: true,
-    stdio: 'ignore',
-  });
-  child.unref();
+
+  if (IS_WIN) {
+    // On Windows, use shell: true so that .exe is found correctly,
+    // and spawn detached so Steam runs independently.
+    const child = spawn(exe, extraArgs, {
+      detached: true,
+      stdio: 'ignore',
+      shell: true,
+    });
+    child.unref();
+  } else {
+    const child = spawn(exe, extraArgs, {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+  }
 }
 
 /**

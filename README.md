@@ -5,7 +5,7 @@
 </p>
 
 
-Shiro is an Electron-based companion tool for [Kuroi](https://github.com/illumfx/kuroi) that enables one-click Steam account switching on Linux.
+Shiro is an Electron-based companion tool for [Kuroi](https://github.com/illumfx/kuroi) that enables one-click Steam account switching on Linux and Windows.
 
 > [!NOTE]
 > Shiro is mostly vibe-coded and may be unstable.
@@ -26,7 +26,7 @@ Shiro is an Electron-based companion tool for [Kuroi](https://github.com/illumfx
 
 ## Requirements
 
-- **Linux** (Steam path detection is Linux-only)
+- **Linux** or **Windows**
 - **Node.js** ≥ 18
 - **Steam** installed locally
 - **Kuroi** backend for credential management
@@ -49,7 +49,7 @@ npm run register
 
 This registers `shiro://` as a custom protocol so your OS can open Shiro when a `shiro://` URL is clicked.
 
-If the automatic registration does not work, you can manually create a Desktop Entry. Create the file `~/.local/share/applications/shiro.desktop` with the following content:
+If the automatic registration does not work on Linux, you can manually create a Desktop Entry. Create the file `~/.local/share/applications/shiro.desktop` with the following content:
 
 ```ini
 [Desktop Entry]
@@ -70,6 +70,8 @@ xdg-mime default shiro.desktop x-scheme-handler/shiro
 update-desktop-database ~/.local/share/applications/
 ```
 
+On **Windows**, `npm run register` writes the `shiro://` handler to the Windows Registry automatically. No manual steps needed.
+
 ### Start Shiro
 
 Shiro is typically launched via a `shiro://` URL from Kuroi. To start it manually:
@@ -84,31 +86,42 @@ Shiro will sit in the system tray, waiting for a login request.
 
 If Steam is installed in a non-standard location, set the `STEAM_ROOT` environment variable:
 
+**Linux:**
 ```bash
 STEAM_ROOT=/path/to/steam npm start
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:STEAM_ROOT="C:\path\to\Steam"; npm start
 ```
 
 ## Uninstall
 
 ### 1. Remove the protocol handler
 
+**Linux:**
 ```bash
 xdg-mime default '' x-scheme-handler/shiro
-```
-
-Then delete the desktop entry (if created by Electron):
-
-```bash
 rm -f ~/.local/share/applications/shiro-handler.desktop
 update-desktop-database ~/.local/share/applications/
 ```
+
+**Windows:** The `shiro://` protocol handler is stored in the Windows Registry under `HKCU\Software\Classes\shiro`. It is removed automatically when uninstalling Electron, or you can delete the key manually via `regedit`.
 
 ### 2. Remove the CEF debugging marker (if it exists)
 
 Shiro creates a `.cef-enable-remote-debugging` file in your Steam directory to enable CEF remote debugging. Remove it if you no longer need it:
 
+**Linux:**
 ```bash
 rm -f ~/.local/share/Steam/.cef-enable-remote-debugging
+```
+
+**Windows:**
+```powershell
+Remove-Item "$env:ProgramFiles\Steam\.cef-enable-remote-debugging" -ErrorAction SilentlyContinue
+Remove-Item "${env:ProgramFiles(x86)}\Steam\.cef-enable-remote-debugging" -ErrorAction SilentlyContinue
 ```
 
 ### 3. Delete Shiro
@@ -124,38 +137,6 @@ No system-wide files, services, or daemons are installed. All Shiro data (logs) 
 - Credentials are **never** persisted to disk by Shiro – only held in memory during the login flow
 - Login tokens are fetched via **one-time tokens** that expire after use
 - Electron uses **context isolation**, **disabled node integration**, and a strict **Content Security Policy**
-
-## Uninstall
-
-### 1. Remove the protocol handler
-
-```bash
-xdg-mime default '' x-scheme-handler/shiro
-```
-
-Then delete the desktop entry (if created by Electron):
-
-```bash
-rm -f ~/.local/share/applications/shiro-handler.desktop
-update-desktop-database ~/.local/share/applications/
-```
-
-### 2. Remove the CEF debugging marker (if it exists)
-
-Shiro creates a `.cef-enable-remote-debugging` file in your Steam directory to enable CEF remote debugging. Remove it if you no longer need it:
-
-```bash
-rm -f ~/.local/share/Steam/.cef-enable-remote-debugging
-```
-
-### 3. Delete Shiro
-
-```bash
-rm -rf /path/to/shiro
-```
-
-No system-wide files, services, or daemons are installed. All Shiro data (logs) is stored within the project directory and cleaned up automatically.
-
 
 ## License
 

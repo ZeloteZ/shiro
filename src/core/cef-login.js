@@ -95,17 +95,32 @@ async function discoverCEF() {
 
 /**
  * Also try reading the port from the running steamwebhelper process args.
+ * Works on both Linux (ps aux) and Windows (wmic).
  * @returns {number|null}
  */
 function getCEFPortFromProcess() {
   try {
     const { execSync } = require('child_process');
-    const output = execSync(
-      "ps aux | grep steamwebhelper | grep -oP '(?<=--remote-debugging-port=)\\d+'",
-      { encoding: 'utf8', stdio: 'pipe' }
-    );
-    const port = parseInt(output.trim().split('\n')[0], 10);
-    if (!isNaN(port) && port > 0) return port;
+    let output;
+
+    if (process.platform === 'win32') {
+      // On Windows, use wmic to get command lines of steamwebhelper.exe processes.
+      output = execSync(
+        'wmic process where "name=\'steamwebhelper.exe\'" get CommandLine /FORMAT:LIST',
+        { encoding: 'utf8', stdio: 'pipe' }
+      );
+    } else {
+      output = execSync(
+        "ps aux | grep steamwebhelper",
+        { encoding: 'utf8', stdio: 'pipe' }
+      );
+    }
+
+    const match = output.match(/--remote-debugging-port=(\d+)/);
+    if (match) {
+      const port = parseInt(match[1], 10);
+      if (!isNaN(port) && port > 0) return port;
+    }
   } catch {}
   return null;
 }
