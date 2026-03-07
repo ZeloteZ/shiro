@@ -239,64 +239,71 @@ async function handleLogin(protocolUrl) {
   sendStatus('injecting', 'Preparing Steam login...');
 
   // ===== CEF Remote Debugging =====
-  // Flow: kill Steam → start with CEF → logout → kill → start with CEF → login
-  // This ensures any previously logged-in account is fully signed out first.
+  // Linux:   kill Steam → start with CEF → logout → kill → start with CEF → login
+  // Windows: kill Steam → start with CEF → login (killing Steam auto-logs out)
   try {
     log.info('[LOGIN] Attempting CEF remote debugging method...');
+    const isWindows = process.platform === 'win32';
 
     // --- Step 1: Kill existing Steam ---
     sendStatus('injecting', 'Stopping Steam...');
     try {
-      log.info('[STEAM] Killing Steam before logout...');
+      log.info('[STEAM] Killing Steam...');
       await killSteam();
-      const killWait = process.platform === 'win32' ? 4000 : 2000;
+      const killWait = isWindows ? 4000 : 2000;
       log.info(`[STEAM] Steam killed. Waiting ${killWait / 1000}s...`);
       await new Promise((r) => setTimeout(r, killWait));
     } catch (err) {
       log.warn(`[STEAM] Kill issue (continuing): ${err.message}`);
     }
 
-    // --- Step 2: Start Steam with CEF for logout ---
-    sendStatus('restarting', 'Starting Steam to sign out current account...');
     const cefArgs = enableCEFDebugging(steamRoot);
-    log.info(`[STEAM] Starting Steam with CEF args: ${cefArgs.join(' ')}`);
-    startSteam(steamRoot, cefArgs);
 
-    sendStatus('waiting', 'Waiting for Steam UI to load...');
-    log.info('[STEAM] Waiting for Steam process...');
-    await waitForSteam(20000);
-    log.info('[STEAM] Steam process detected. Waiting for CEF...');
-    await new Promise((r) => setTimeout(r, 5000));
+    // On Linux, killing Steam does NOT log out the user, so we need an
+    // explicit CEF logout cycle before the actual login.
+    if (!isWindows) {
+      // --- Step 2 (Linux): Start Steam with CEF for logout ---
+      sendStatus('restarting', 'Starting Steam to sign out current account...');
+      log.info(`[STEAM] Starting Steam with CEF args: ${cefArgs.join(' ')}`);
+      startSteam(steamRoot, cefArgs);
 
-    // --- Step 3: Logout via CEF ---
-    sendStatus('injecting', 'Signing out current account...');
-    try {
-      const loggedOut = await logoutViaCEF({
-        cefTimeout: 45000,
-        cdpTimeout: 15000,
-      });
-      if (loggedOut) {
-        log.info('[CEF] ✅ Logout successful');
-      } else {
-        log.info('[CEF] No active session to logout (continuing)');
+      sendStatus('waiting', 'Waiting for Steam UI to load...');
+      log.info('[STEAM] Waiting for Steam process...');
+      await waitForSteam(20000);
+      log.info('[STEAM] Steam process detected. Waiting for CEF...');
+      await new Promise((r) => setTimeout(r, 5000));
+
+      // --- Step 3 (Linux): Logout via CEF ---
+      sendStatus('injecting', 'Signing out current account...');
+      try {
+        const loggedOut = await logoutViaCEF({
+          cefTimeout: 45000,
+          cdpTimeout: 15000,
+        });
+        if (loggedOut) {
+          log.info('[CEF] ✅ Logout successful');
+        } else {
+          log.info('[CEF] No active session to logout (continuing)');
+        }
+      } catch (err) {
+        log.warn(`[CEF] Logout attempt failed (continuing): ${err.message}`);
       }
-    } catch (err) {
-      log.warn(`[CEF] Logout attempt failed (continuing): ${err.message}`);
+
+      // --- Step 4 (Linux): Kill Steam again ---
+      sendStatus('injecting', 'Stopping Steam after logout...');
+      try {
+        log.info('[STEAM] Killing Steam after logout...');
+        await killSteam();
+        log.info('[STEAM] Steam killed. Waiting 2s...');
+        await new Promise((r) => setTimeout(r, 2000));
+      } catch (err) {
+        log.warn(`[STEAM] Kill issue (continuing): ${err.message}`);
+      }
+    } else {
+      log.info('[STEAM] Windows: killing Steam auto-logs out – skipping CEF logout cycle');
     }
 
-    // --- Step 4: Kill Steam again ---
-    sendStatus('injecting', 'Stopping Steam after logout...');
-    try {
-      log.info('[STEAM] Killing Steam after logout...');
-      await killSteam();
-      const killWait = process.platform === 'win32' ? 4000 : 2000;
-      log.info(`[STEAM] Steam killed. Waiting ${killWait / 1000}s...`);
-      await new Promise((r) => setTimeout(r, killWait));
-    } catch (err) {
-      log.warn(`[STEAM] Kill issue (continuing): ${err.message}`);
-    }
-
-    // --- Step 5: Start Steam with CEF again for login ---
+    // --- Start Steam with CEF for login ---
     sendStatus('restarting', 'Starting Steam with remote debugging...');
     log.info(`[STEAM] Starting Steam with CEF args: ${cefArgs.join(' ')}`);
     startSteam(steamRoot, cefArgs);
