@@ -30,7 +30,7 @@ body {
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
+  right: 56px;
   height: 40px;
   -webkit-app-region: drag;
   z-index: 1;
@@ -126,7 +126,7 @@ body {
   justify-content: center;
   color: #94a3b8;
   transition: all 0.2s;
-  z-index: 100;
+  z-index: 200;
   -webkit-app-region: no-drag;
 }
 
