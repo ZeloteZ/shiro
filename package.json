@@ -3,8 +3,10 @@
   "productName": "Shiro",
   "version": "0.1.0",
   "description": "Shiro 白 – Steam One-Click Login Tool",
-  "author": "ZeloteZ",
-  "email": "info@zelotez.cloud",
+  "author": {
+    "name": "ZeloteZ",
+    "email": "info@zelotez.cloud"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -60,6 +62,7 @@
     },
     "linux": {
       "icon": "assets/icons",
+      "maintainer": "ZeloteZ <info@zelotez.cloud>",
       "target": [
         "AppImage",
         "deb"
