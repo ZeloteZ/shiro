@@ -140,6 +140,26 @@ npm run dist:linux
 npm run dist:win
 ```
 
+## AUR
+
+The repository contains a ready-to-publish `shiro-bin` AUR package definition in `packaging/aur/shiro-bin`.
+
+It packages the GitHub release AppImage into an Arch package under `/opt/shiro`, installs `/usr/bin/shiro`, the desktop entry, and the icons.
+
+For a local test build on an Arch-based system:
+
+```bash
+cd packaging/aur/shiro-bin
+makepkg -si
+```
+
+When you cut a new release, update `pkgver` in `PKGBUILD` and regenerate `.SRCINFO` with:
+
+```bash
+cd packaging/aur/shiro-bin
+makepkg --printsrcinfo > .SRCINFO
+```
+
 ## Uninstall
 
 ### 1. Remove the protocol handler
