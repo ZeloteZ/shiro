@@ -15,6 +15,7 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const log = require('./core/log');
 
@@ -31,6 +32,115 @@ const { enableCEFDebugging, loginViaCEFWithRetry, logoutViaCEF } = require('./co
 let mainWindow = null;
 let currentAuth = null;
 let tray = null;
+
+function updateWindowsProtocolMetadata() {
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    execSync('reg add "HKCU\\Software\\Classes\\shiro" /ve /d "URL:Shiro" /f', { stdio: 'pipe' });
+    execSync('reg add "HKCU\\Software\\Classes\\shiro" /v "URL Protocol" /d "" /f', { stdio: 'pipe' });
+    execSync(`reg add "HKCU\\Software\\Classes\\shiro\\DefaultIcon" /ve /d "${process.execPath},0" /f`, { stdio: 'pipe' });
+  } catch (error) {
+    log.warn(`[LIFECYCLE] Failed to refresh Windows protocol metadata: ${error.message}`);
+  }
+}
+
+function escapeDesktopExecArg(value) {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function updateLinuxProtocolMetadata() {
+  if (process.platform !== 'linux') {
+    return;
+  }
+
+  try {
+    const { execFileSync } = require('child_process');
+    const applicationsDir = path.join(app.getPath('home'), '.local', 'share', 'applications');
+    const desktopFilePath = path.join(applicationsDir, 'shiro.desktop');
+    const execArgs = app.isPackaged
+      ? [process.execPath]
+      : [process.execPath, path.resolve(path.join(__dirname, '..'))];
+    const desktopEntry = [
+      '[Desktop Entry]',
+      'Name=Shiro',
+      'Comment=Steam One-Click Login Tool',
+      `Exec=${execArgs.map(escapeDesktopExecArg).join(' ')} %u`,
+      'Type=Application',
+      'MimeType=x-scheme-handler/shiro;',
+      'NoDisplay=true',
+      'Categories=Utility;',
+      'Terminal=false',
+      'StartupNotify=false',
+      '',
+    ].join('\n');
+
+    const desktopFileExists = fs.existsSync(desktopFilePath);
+    if (!desktopFileExists) {
+      fs.mkdirSync(applicationsDir, { recursive: true });
+      fs.writeFileSync(desktopFilePath, desktopEntry, 'utf8');
+      log.info('[LIFECYCLE] Created Linux desktop entry for shiro://');
+    }
+
+    let currentDefault = '';
+    try {
+      currentDefault = execFileSync('xdg-mime', ['query', 'default', 'x-scheme-handler/shiro'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    } catch {}
+
+    if (currentDefault !== 'shiro.desktop') {
+      execFileSync('xdg-mime', ['default', 'shiro.desktop', 'x-scheme-handler/shiro'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      log.info('[LIFECYCLE] Refreshed Linux protocol handler association');
+    }
+
+    if (!desktopFileExists) {
+      try {
+        execFileSync('update-desktop-database', [applicationsDir], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } catch {}
+    }
+  } catch (error) {
+    log.warn(`[LIFECYCLE] Failed to refresh Linux protocol metadata: ${error.message}`);
+  }
+}
+
+function registerProtocolHandler({ repairIfMissing = false } = {}) {
+  const shouldRegister = !app.isPackaged || repairIfMissing;
+  if (!shouldRegister) {
+    return;
+  }
+
+  if (app.isDefaultProtocolClient('shiro')) {
+    updateWindowsProtocolMetadata();
+    updateLinuxProtocolMetadata();
+    return;
+  }
+
+  let registered = false;
+  if (!app.isPackaged && process.platform === 'win32') {
+    registered = app.setAsDefaultProtocolClient('shiro', process.execPath, [path.resolve(path.join(__dirname, '..'))]);
+  } else {
+    registered = app.setAsDefaultProtocolClient('shiro');
+  }
+
+  if (registered) {
+    log.info('[LIFECYCLE] Registered shiro:// protocol handler');
+    updateWindowsProtocolMetadata();
+    updateLinuxProtocolMetadata();
+    return;
+  }
+
+  updateLinuxProtocolMetadata();
+  log.warn('[LIFECYCLE] Failed to register shiro:// protocol handler');
+}
 
 // ---------------------------------------------------------------------------
 // Window
@@ -438,32 +548,9 @@ app.whenReady().then(() => {
 
   const isRegisterMode = process.argv.includes('--register-protocol');
 
-  // Register protocol handler only in dev mode or explicit register mode.
-  // Installer builds should own protocol integration and avoid touching it on every app start.
-  if (!app.isPackaged || isRegisterMode) {
-    // In dev mode on Windows, Electron needs the app path passed explicitly
-    // so the registry entry becomes: electron.exe "C:\path\to\shiro" "%1"
-    // Without this, Windows passes the shiro:// URL as the app path itself.
-    if (!app.isDefaultProtocolClient('shiro')) {
-      if (!app.isPackaged && process.platform === 'win32') {
-        app.setAsDefaultProtocolClient('shiro', process.execPath, [path.resolve(path.join(__dirname, '..'))]);
-      } else {
-        app.setAsDefaultProtocolClient('shiro');
-      }
-      log.info('[LIFECYCLE] Registered shiro:// protocol handler');
-    }
-
-    // On Windows, override the registry display name so the browser shows "Shiro"
-    // instead of "Electron" in the protocol confirmation dialog.
-    if (process.platform === 'win32') {
-      try {
-        const { execSync } = require('child_process');
-        execSync('reg add "HKCU\\Software\\Classes\\shiro" /ve /d "URL:Shiro" /f', { stdio: 'pipe' });
-        execSync('reg add "HKCU\\Software\\Classes\\shiro" /v "URL Protocol" /d "" /f', { stdio: 'pipe' });
-        execSync('reg add "HKCU\\Software\\Classes\\shiro\\DefaultIcon" /ve /d "Shiro" /f', { stdio: 'pipe' });
-      } catch {}
-    }
-  }
+  // Installer builds should own protocol integration initially, but packaged apps
+  // still repair the association when it was removed by an uninstall or upgrade.
+  registerProtocolHandler({ repairIfMissing: app.isPackaged || isRegisterMode });
 
   // --- System tray ---
   const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png');

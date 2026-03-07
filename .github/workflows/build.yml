@@ -45,6 +45,35 @@ jobs:
       - name: Build application
         run: ${{ matrix.command }}
 
+      - name: Smoke test Linux packages
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deb_file="$(find dist -maxdepth 1 -name '*.deb' | head -n 1)"
+          appimage_file="$(find dist -maxdepth 1 -name '*.AppImage' | head -n 1)"
+
+          test -n "$deb_file"
+          test -n "$appimage_file"
+
+          deb_unpack_dir="$(mktemp -d)"
+          dpkg-deb -x "$deb_file" "$deb_unpack_dir"
+          deb_desktop_file="$(find "$deb_unpack_dir" -path '*/applications/*.desktop' | head -n 1)"
+          test -n "$deb_desktop_file"
+          grep -q '^MimeType=.*x-scheme-handler/shiro;' "$deb_desktop_file"
+
+          appimage_abs_path="$(realpath "$appimage_file")"
+          appimage_extract_dir="$(mktemp -d)"
+          chmod +x "$appimage_abs_path"
+          (
+            cd "$appimage_extract_dir"
+            "$appimage_abs_path" --appimage-extract >/dev/null
+          )
+          appimage_desktop_file="$(find "$appimage_extract_dir/squashfs-root" -name '*.desktop' | head -n 1)"
+          test -n "$appimage_desktop_file"
+          grep -q '^MimeType=.*x-scheme-handler/shiro;' "$appimage_desktop_file"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

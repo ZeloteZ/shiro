@@ -45,6 +45,8 @@ Installer builds include `shiro://` protocol metadata.
 - **Linux (`.deb`)**: the Debian package installs a desktop entry with `x-scheme-handler/shiro`, so the handler is registered by the package install.
 - **Linux (`.AppImage`)**: the AppImage contains the protocol metadata, but AppImage files do not force desktop integration by themselves. On Arch and other non-Debian distros, use **AppImageLauncher** or integrate the AppImage manually so your desktop environment installs the `.desktop` entry and registers `shiro://`.
 
+If the protocol association was removed before, launching the packaged app once after reinstall repairs the missing `shiro://` registration on Windows and Linux.
+
 For AppImage users, the easiest flow is usually:
 
 ```bash
@@ -64,7 +66,7 @@ npm run register
 
 This registers `shiro://` as a custom protocol so your OS can open Shiro when a `shiro://` URL is clicked.
 
-For packaged installs, you usually do **not** need this step on Windows or `.deb`-based Linux systems because the installer handles it already. For AppImage installs, desktop integration may still be needed depending on your distro and launcher setup.
+For packaged installs, you usually do **not** need this step on Windows or `.deb`-based Linux systems because the installer handles it already. If the association was removed during an earlier uninstall, start Shiro once after reinstall and it will restore the handler. For AppImage installs, desktop integration may still be needed depending on your distro and launcher setup.
 
 If the automatic registration does not work on Linux, you can manually create a Desktop Entry. Create the file `~/.local/share/applications/shiro.desktop` with the following content:
 
@@ -158,7 +160,7 @@ If you still see `shiro.desktop` in `~/.local/share/applications/mimeinfo.cache`
 
 **Windows:** The NSIS uninstaller removes the `shiro://` protocol handler automatically (`HKCU\Software\Classes\shiro`). If needed, you can still remove the key manually via `regedit`.
 
-**Linux package note:** For `.deb` installs, package removal updates the desktop cache automatically. User-level overrides in `~/.config/mimeapps.list` can still remain, so the manual cleanup commands above are still the reliable fallback.
+**Linux package note:** For `.deb` installs, package removal updates the desktop cache automatically. User-level overrides in `~/.config/mimeapps.list` can still remain, so the manual cleanup commands above are still the reliable fallback. After reinstall, launching Shiro once recreates the local `shiro.desktop` mapping if it is missing.
 
 ### 2. Remove the CEF debugging marker (if it exists)
 
