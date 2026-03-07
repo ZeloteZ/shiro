@@ -1,0 +1,51 @@
+pkgname=shiro-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Steam one-click login companion for Kuroi'
+arch=('x86_64')
+url='https://github.com/ZeloteZ/shiro'
+license=('MIT')
+depends=('alsa-lib' 'at-spi2-core' 'gtk3' 'libdrm' 'libsecret' 'libx11' 'libxcb' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa' 'nss' 'xdg-utils')
+options=(!strip)
+install=shiro-bin.install
+_appimage="Shiro-${pkgver}.AppImage"
+source=(
+  "${_appimage}::https://github.com/ZeloteZ/shiro/releases/download/v${pkgver}/${_appimage}"
+  "LICENSE::https://raw.githubusercontent.com/ZeloteZ/shiro/v${pkgver}/LICENSE"
+)
+sha256sums=('SKIP' 'SKIP')
+
+package() {
+  chmod +x "${srcdir}/${_appimage}"
+  rm -rf "${srcdir}/squashfs-root"
+  (
+    cd "${srcdir}"
+    "./${_appimage}" --appimage-extract >/dev/null
+  )
+
+  install -dm755 "${pkgdir}/opt/shiro"
+  cp -a "${srcdir}/squashfs-root/." "${pkgdir}/opt/shiro/"
+  find "${pkgdir}/opt/shiro" -type d -exec chmod 755 {} +
+  find "${pkgdir}/opt/shiro" -type f -exec chmod 644 {} +
+  find "${pkgdir}/opt/shiro" -maxdepth 1 -type f \( -name 'AppRun' -o -name 'shiro' -o -name 'Shiro' \) -exec chmod 755 {} +
+
+  install -dm755 "${pkgdir}/usr/bin"
+  cat > "${pkgdir}/usr/bin/shiro" <<'EOF'
+#!/bin/sh
+exec /opt/shiro/AppRun "$@"
+EOF
+  chmod 755 "${pkgdir}/usr/bin/shiro"
+
+  install -Dm644 "${srcdir}/squashfs-root/shiro.desktop" "${pkgdir}/usr/share/applications/shiro.desktop"
+  sed -i 's|^Exec=.*|Exec=/usr/bin/shiro %u|' "${pkgdir}/usr/share/applications/shiro.desktop"
+  sed -i 's|^Icon=.*|Icon=shiro|' "${pkgdir}/usr/share/applications/shiro.desktop"
+
+  if [ -d "${srcdir}/squashfs-root/usr/share/icons" ]; then
+    install -dm755 "${pkgdir}/usr/share/icons"
+    cp -a "${srcdir}/squashfs-root/usr/share/icons/." "${pkgdir}/usr/share/icons/"
+    find "${pkgdir}/usr/share/icons" -type d -exec chmod 755 {} +
+    find "${pkgdir}/usr/share/icons" -type f -exec chmod 644 {} +
+  fi
+
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

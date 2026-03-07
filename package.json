@@ -3,7 +3,10 @@
   "productName": "Shiro",
   "version": "0.1.0",
   "description": "Shiro 白 – Steam One-Click Login Tool",
-  "author": "ZeloteZ",
+  "author": {
+    "name": "ZeloteZ",
+    "email": "info@zelotez.cloud"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -21,6 +24,9 @@
   "scripts": {
     "start": "electron .",
     "register": "electron . --register-protocol",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb --publish never",
+    "dist:win": "electron-builder --win nsis --publish never",
     "postinstall": "node -e \"const{rcedit}=require('rcedit');const p=require('path').join(__dirname,'node_modules','electron','dist','electron.exe');const fs=require('fs');if(fs.existsSync(p))rcedit(p,{'version-string':{FileDescription:'Shiro',ProductName:'Shiro'}}).catch(()=>{})\""
   },
   "dependencies": {
@@ -29,7 +35,57 @@
   },
   "devDependencies": {
     "electron": "^33.0.0",
+    "electron-builder": "^26.0.12",
     "rcedit": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.zelotez.shiro",
+    "productName": "Shiro",
+    "protocols": [
+      {
+        "name": "Shiro",
+        "schemes": [
+          "shiro"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "include": "build/installer.nsh",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "icon": "assets/icons",
+      "maintainer": "ZeloteZ <info@zelotez.cloud>",
+      "desktop": {
+        "entry": {
+          "MimeType": "x-scheme-handler/shiro;"
+        }
+      },
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    },
+    "deb": {
+      "afterRemove": "build/deb-after-remove.sh"
+    }
   },
   "engines": {
     "node": ">=18.0.0"

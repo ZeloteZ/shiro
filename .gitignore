@@ -12,7 +12,11 @@ shiro.log
 # Build / Distribution
 dist/
 out/
-build/
+build/*
+!build/installer.nsh
+!build/deb-after-remove.sh
+packaging/aur/shiro-bin/pkg
+packaging/aur/shiro-bin/src
 
 # Electron
 .electron/
@@ -30,6 +34,5 @@ Desktop.ini
 *~
 
 # Package manager
-package-lock.json
 yarn.lock
 pnpm-lock.yaml

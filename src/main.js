@@ -15,6 +15,7 @@
 'use strict';
 
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const log = require('./core/log');
 
@@ -31,6 +32,140 @@ const { enableCEFDebugging, loginViaCEFWithRetry, logoutViaCEF } = require('./co
 let mainWindow = null;
 let currentAuth = null;
 let tray = null;
+
+function updateWindowsProtocolMetadata() {
+  if (process.platform !== 'win32') {
+    return;
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    execSync('reg add "HKCU\\Software\\Classes\\shiro" /ve /d "URL:Shiro" /f', { stdio: 'pipe' });
+    execSync('reg add "HKCU\\Software\\Classes\\shiro" /v "URL Protocol" /d "" /f', { stdio: 'pipe' });
+    execSync(`reg add "HKCU\\Software\\Classes\\shiro\\DefaultIcon" /ve /d "${process.execPath},0" /f`, { stdio: 'pipe' });
+  } catch (error) {
+    log.warn(`[LIFECYCLE] Failed to refresh Windows protocol metadata: ${error.message}`);
+  }
+}
+
+function escapeDesktopExecArg(value) {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function getLinuxProtocolExecArgs() {
+  if (!app.isPackaged) {
+    return [process.execPath, path.resolve(path.join(__dirname, '..'))];
+  }
+
+  if (process.env.APPIMAGE) {
+    return [path.resolve(process.env.APPIMAGE)];
+  }
+
+  return [process.execPath];
+}
+
+function isManagedLinuxDesktopEntry(desktopEntry) {
+  return desktopEntry.includes('X-Shiro-Managed=true')
+    || (desktopEntry.includes('Name=Shiro')
+      && desktopEntry.includes('MimeType=x-scheme-handler/shiro;'));
+}
+
+function updateLinuxProtocolMetadata() {
+  if (process.platform !== 'linux') {
+    return;
+  }
+
+  try {
+    const { execFileSync } = require('child_process');
+    const applicationsDir = path.join(app.getPath('home'), '.local', 'share', 'applications');
+    const desktopFilePath = path.join(applicationsDir, 'shiro.desktop');
+    const execArgs = getLinuxProtocolExecArgs();
+    const desktopEntry = [
+      '[Desktop Entry]',
+      'Name=Shiro',
+      'Comment=Steam One-Click Login Tool',
+      `Exec=${execArgs.map(escapeDesktopExecArg).join(' ')} %u`,
+      'Type=Application',
+      'MimeType=x-scheme-handler/shiro;',
+      'NoDisplay=true',
+      'Categories=Utility;',
+      'Terminal=false',
+      'StartupNotify=false',
+      'X-Shiro-Managed=true',
+      '',
+    ].join('\n');
+
+    const desktopFileExists = fs.existsSync(desktopFilePath);
+    const currentDesktopEntry = desktopFileExists
+      ? fs.readFileSync(desktopFilePath, 'utf8')
+      : null;
+    const shouldWriteDesktopEntry = !desktopFileExists
+      || (currentDesktopEntry !== desktopEntry && isManagedLinuxDesktopEntry(currentDesktopEntry));
+
+    if (shouldWriteDesktopEntry) {
+      fs.mkdirSync(applicationsDir, { recursive: true });
+      fs.writeFileSync(desktopFilePath, desktopEntry, 'utf8');
+      log.info(desktopFileExists
+        ? '[LIFECYCLE] Updated Linux desktop entry for shiro://'
+        : '[LIFECYCLE] Created Linux desktop entry for shiro://');
+    }
+
+    let currentDefault = '';
+    try {
+      currentDefault = execFileSync('xdg-mime', ['query', 'default', 'x-scheme-handler/shiro'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    } catch {}
+
+    if (currentDefault !== 'shiro.desktop') {
+      execFileSync('xdg-mime', ['default', 'shiro.desktop', 'x-scheme-handler/shiro'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      log.info('[LIFECYCLE] Refreshed Linux protocol handler association');
+    }
+
+    if (shouldWriteDesktopEntry) {
+      try {
+        execFileSync('update-desktop-database', [applicationsDir], {
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } catch {}
+    }
+  } catch (error) {
+    log.warn(`[LIFECYCLE] Failed to refresh Linux protocol metadata: ${error.message}`);
+  }
+}
+
+function registerProtocolHandler({ repairIfMissing = false } = {}) {
+  const shouldRegister = !app.isPackaged || repairIfMissing;
+  if (!shouldRegister) {
+    return;
+  }
+
+  if (app.isDefaultProtocolClient('shiro')) {
+    updateWindowsProtocolMetadata();
+    updateLinuxProtocolMetadata();
+    return;
+  }
+
+  let registered = false;
+  if (!app.isPackaged && process.platform === 'win32') {
+    registered = app.setAsDefaultProtocolClient('shiro', process.execPath, [path.resolve(path.join(__dirname, '..'))]);
+  } else {
+    registered = app.setAsDefaultProtocolClient('shiro');
+  }
+
+  if (registered) {
+    log.info('[LIFECYCLE] Registered shiro:// protocol handler');
+    updateWindowsProtocolMetadata();
+    updateLinuxProtocolMetadata();
+    return;
+  }
+
+  updateLinuxProtocolMetadata();
+  log.warn('[LIFECYCLE] Failed to register shiro:// protocol handler');
+}
 
 // ---------------------------------------------------------------------------
 // Window
@@ -191,6 +326,7 @@ async function handleLogin(protocolUrl) {
   currentAuth = new SteamAuth();
 
   let refreshToken;
+  let steamId64 = null;
   let personaName = persona_name || account_name;
   try {
     const authResult = await new Promise((resolve, reject) => {
@@ -229,6 +365,7 @@ async function handleLogin(protocolUrl) {
       currentAuth.startLogin(account_name, password).catch(reject);
     });
     refreshToken = authResult.refreshToken;
+    steamId64 = authResult.steamID?.getSteamID64?.() || authResult.steamID?.toString?.() || null;
   } catch (err) {
     sendStatus('error', err.message);
     _cleanup();
@@ -261,7 +398,7 @@ async function handleLogin(protocolUrl) {
 
     // On Linux, killing Steam does NOT log out the user, so we need an
     // explicit CEF logout cycle before the actual login.
-    /*if (!isWindows) {
+    if (!isWindows) {
       // --- Step 2 (Linux): Start Steam with CEF for logout ---
       sendStatus('restarting', 'Starting Steam to sign out current account...');
       log.info(`[STEAM] Starting Steam with CEF args: ${cefArgs.join(' ')}`);
@@ -301,7 +438,7 @@ async function handleLogin(protocolUrl) {
       }
     } else {
       log.info('[STEAM] Windows: killing Steam auto-logs out – skipping CEF logout cycle');
-    }*/
+    }
 
     // --- Start Steam with CEF for login ---
     sendStatus('restarting', 'Starting Steam with remote debugging...');
@@ -316,7 +453,9 @@ async function handleLogin(protocolUrl) {
 
     // --- Step 6: Login via CEF ---
     sendStatus('injecting', 'Injecting login token via Steam API...');
-    const result = await loginViaCEFWithRetry(refreshToken, account_name, {
+    const loginIds = [steamId64, account_name].filter(Boolean);
+    log.info(`[CEF] Login identifiers: ${loginIds.join(', ')}`);
+    const result = await loginViaCEFWithRetry(refreshToken, loginIds, {
       cefTimeout: 45000,
       cdpTimeout: 15000,
     });
@@ -436,29 +575,11 @@ app.whenReady().then(() => {
   log.info(`[LIFECYCLE] argv: ${process.argv.join(' ')}`);
   log.info(`[LIFECYCLE] Electron ${process.versions.electron}, Node ${process.versions.node}`);
 
-  // Register protocol handler.
-  // In dev mode on Windows, Electron needs the app path passed explicitly
-  // so the registry entry becomes: electron.exe "C:\path\to\shiro" "%1"
-  // Without this, Windows passes the shiro:// URL as the app path itself.
-  if (!app.isDefaultProtocolClient('shiro')) {
-    if (!app.isPackaged && process.platform === 'win32') {
-      app.setAsDefaultProtocolClient('shiro', process.execPath, [path.resolve(path.join(__dirname, '..'))]);
-    } else {
-      app.setAsDefaultProtocolClient('shiro');
-    }
-    log.info('[LIFECYCLE] Registered shiro:// protocol handler');
-  }
+  const isRegisterMode = process.argv.includes('--register-protocol');
 
-  // On Windows, override the registry display name so the browser shows "Shiro"
-  // instead of "Electron" in the protocol confirmation dialog.
-  if (process.platform === 'win32') {
-    try {
-      const { execSync } = require('child_process');
-      execSync('reg add "HKCU\\Software\\Classes\\shiro" /ve /d "URL:Shiro" /f', { stdio: 'pipe' });
-      execSync('reg add "HKCU\\Software\\Classes\\shiro" /v "URL Protocol" /d "" /f', { stdio: 'pipe' });
-      execSync('reg add "HKCU\\Software\\Classes\\shiro\\DefaultIcon" /ve /d "Shiro" /f', { stdio: 'pipe' });
-    } catch {}
-  }
+  // Installer builds should own protocol integration initially, but packaged apps
+  // still repair the association when it was removed by an uninstall or upgrade.
+  registerProtocolHandler({ repairIfMissing: app.isPackaged || isRegisterMode });
 
   // --- System tray ---
   const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png');
@@ -516,7 +637,7 @@ app.whenReady().then(() => {
     mainWindow.webContents.once('did-finish-load', () => {
       handleLogin(protocolUrl);
     });
-  } else if (process.argv.includes('--register-protocol')) {
+  } else if (isRegisterMode) {
     // Just register and exit.
     log.info('[LIFECYCLE] Mode: register-protocol only');
     console.log('✅ Shiro protocol handler registered.');
