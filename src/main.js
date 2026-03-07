@@ -436,28 +436,33 @@ app.whenReady().then(() => {
   log.info(`[LIFECYCLE] argv: ${process.argv.join(' ')}`);
   log.info(`[LIFECYCLE] Electron ${process.versions.electron}, Node ${process.versions.node}`);
 
-  // Register protocol handler.
-  // In dev mode on Windows, Electron needs the app path passed explicitly
-  // so the registry entry becomes: electron.exe "C:\path\to\shiro" "%1"
-  // Without this, Windows passes the shiro:// URL as the app path itself.
-  if (!app.isDefaultProtocolClient('shiro')) {
-    if (!app.isPackaged && process.platform === 'win32') {
-      app.setAsDefaultProtocolClient('shiro', process.execPath, [path.resolve(path.join(__dirname, '..'))]);
-    } else {
-      app.setAsDefaultProtocolClient('shiro');
-    }
-    log.info('[LIFECYCLE] Registered shiro:// protocol handler');
-  }
+  const isRegisterMode = process.argv.includes('--register-protocol');
 
-  // On Windows, override the registry display name so the browser shows "Shiro"
-  // instead of "Electron" in the protocol confirmation dialog.
-  if (process.platform === 'win32') {
-    try {
-      const { execSync } = require('child_process');
-      execSync('reg add "HKCU\\Software\\Classes\\shiro" /ve /d "URL:Shiro" /f', { stdio: 'pipe' });
-      execSync('reg add "HKCU\\Software\\Classes\\shiro" /v "URL Protocol" /d "" /f', { stdio: 'pipe' });
-      execSync('reg add "HKCU\\Software\\Classes\\shiro\\DefaultIcon" /ve /d "Shiro" /f', { stdio: 'pipe' });
-    } catch {}
+  // Register protocol handler only in dev mode or explicit register mode.
+  // Installer builds should own protocol integration and avoid touching it on every app start.
+  if (!app.isPackaged || isRegisterMode) {
+    // In dev mode on Windows, Electron needs the app path passed explicitly
+    // so the registry entry becomes: electron.exe "C:\path\to\shiro" "%1"
+    // Without this, Windows passes the shiro:// URL as the app path itself.
+    if (!app.isDefaultProtocolClient('shiro')) {
+      if (!app.isPackaged && process.platform === 'win32') {
+        app.setAsDefaultProtocolClient('shiro', process.execPath, [path.resolve(path.join(__dirname, '..'))]);
+      } else {
+        app.setAsDefaultProtocolClient('shiro');
+      }
+      log.info('[LIFECYCLE] Registered shiro:// protocol handler');
+    }
+
+    // On Windows, override the registry display name so the browser shows "Shiro"
+    // instead of "Electron" in the protocol confirmation dialog.
+    if (process.platform === 'win32') {
+      try {
+        const { execSync } = require('child_process');
+        execSync('reg add "HKCU\\Software\\Classes\\shiro" /ve /d "URL:Shiro" /f', { stdio: 'pipe' });
+        execSync('reg add "HKCU\\Software\\Classes\\shiro" /v "URL Protocol" /d "" /f', { stdio: 'pipe' });
+        execSync('reg add "HKCU\\Software\\Classes\\shiro\\DefaultIcon" /ve /d "Shiro" /f', { stdio: 'pipe' });
+      } catch {}
+    }
   }
 
   // --- System tray ---
@@ -516,7 +521,7 @@ app.whenReady().then(() => {
     mainWindow.webContents.once('did-finish-load', () => {
       handleLogin(protocolUrl);
     });
-  } else if (process.argv.includes('--register-protocol')) {
+  } else if (isRegisterMode) {
     // Just register and exit.
     log.info('[LIFECYCLE] Mode: register-protocol only');
     console.log('✅ Shiro protocol handler registered.');

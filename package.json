@@ -41,6 +41,14 @@
   "build": {
     "appId": "com.zelotez.shiro",
     "productName": "Shiro",
+    "protocols": [
+      {
+        "name": "Shiro",
+        "schemes": [
+          "shiro"
+        ]
+      }
+    ],
     "directories": {
       "output": "dist"
     },
@@ -63,6 +71,9 @@
     "linux": {
       "icon": "assets/icons",
       "maintainer": "ZeloteZ <info@zelotez.cloud>",
+      "desktop": {
+        "MimeType": "x-scheme-handler/shiro;"
+      },
       "target": [
         "AppImage",
         "deb"

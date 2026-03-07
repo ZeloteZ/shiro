@@ -37,6 +37,23 @@ cd shiro
 npm install
 ```
 
+## Packaged installs
+
+Installer builds include `shiro://` protocol metadata.
+
+- **Windows (`.exe`)**: the NSIS installer registers the `shiro://` handler during installation.
+- **Linux (`.deb`)**: the Debian package installs a desktop entry with `x-scheme-handler/shiro`, so the handler is registered by the package install.
+- **Linux (`.AppImage`)**: the AppImage contains the protocol metadata, but AppImage files do not force desktop integration by themselves. On Arch and other non-Debian distros, use **AppImageLauncher** or integrate the AppImage manually so your desktop environment installs the `.desktop` entry and registers `shiro://`.
+
+For AppImage users, the easiest flow is usually:
+
+```bash
+chmod +x Shiro-*.AppImage
+./Shiro-*.AppImage
+```
+
+If your system asks whether to integrate the AppImage, choose **yes**. If it does not, install AppImageLauncher or register the desktop file manually.
+
 ## Usage
 
 ### Register the protocol handler
@@ -46,6 +63,8 @@ npm run register
 ```
 
 This registers `shiro://` as a custom protocol so your OS can open Shiro when a `shiro://` URL is clicked.
+
+For packaged installs, you usually do **not** need this step on Windows or `.deb`-based Linux systems because the installer handles it already. For AppImage installs, desktop integration may still be needed depending on your distro and launcher setup.
 
 If the automatic registration does not work on Linux, you can manually create a Desktop Entry. Create the file `~/.local/share/applications/shiro.desktop` with the following content:
 
