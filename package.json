@@ -1,5 +1,6 @@
 {
   "name": "shiro",
+  "productName": "Shiro",
   "version": "0.1.0",
   "description": "Shiro 白 – Steam One-Click Login Tool",
   "author": "ZeloteZ",
@@ -8,18 +9,27 @@
     "type": "git",
     "url": "https://github.com/ZeloteZ/shiro.git"
   },
-  "keywords": ["steam", "login", "electron", "linux", "windows", "steam-guard"],
+  "keywords": [
+    "steam",
+    "login",
+    "electron",
+    "linux",
+    "windows",
+    "steam-guard"
+  ],
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "register": "electron . --register-protocol"
+    "register": "electron . --register-protocol",
+    "postinstall": "node -e \"const{rcedit}=require('rcedit');const p=require('path').join(__dirname,'node_modules','electron','dist','electron.exe');const fs=require('fs');if(fs.existsSync(p))rcedit(p,{'version-string':{FileDescription:'Shiro',ProductName:'Shiro'}}).catch(()=>{})\""
   },
   "dependencies": {
     "steam-session": "^1.8.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "rcedit": "^5.0.2"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -249,8 +249,9 @@ async function handleLogin(protocolUrl) {
     try {
       log.info('[STEAM] Killing Steam before logout...');
       await killSteam();
-      log.info('[STEAM] Steam killed. Waiting 2s...');
-      await new Promise((r) => setTimeout(r, 2000));
+      const killWait = process.platform === 'win32' ? 4000 : 2000;
+      log.info(`[STEAM] Steam killed. Waiting ${killWait / 1000}s...`);
+      await new Promise((r) => setTimeout(r, killWait));
     } catch (err) {
       log.warn(`[STEAM] Kill issue (continuing): ${err.message}`);
     }
@@ -288,8 +289,9 @@ async function handleLogin(protocolUrl) {
     try {
       log.info('[STEAM] Killing Steam after logout...');
       await killSteam();
-      log.info('[STEAM] Steam killed. Waiting 2s...');
-      await new Promise((r) => setTimeout(r, 2000));
+      const killWait = process.platform === 'win32' ? 4000 : 2000;
+      log.info(`[STEAM] Steam killed. Waiting ${killWait / 1000}s...`);
+      await new Promise((r) => setTimeout(r, killWait));
     } catch (err) {
       log.warn(`[STEAM] Kill issue (continuing): ${err.message}`);
     }
@@ -428,9 +430,27 @@ app.whenReady().then(() => {
   log.info(`[LIFECYCLE] Electron ${process.versions.electron}, Node ${process.versions.node}`);
 
   // Register protocol handler.
+  // In dev mode on Windows, Electron needs the app path passed explicitly
+  // so the registry entry becomes: electron.exe "C:\path\to\shiro" "%1"
+  // Without this, Windows passes the shiro:// URL as the app path itself.
   if (!app.isDefaultProtocolClient('shiro')) {
-    app.setAsDefaultProtocolClient('shiro');
+    if (!app.isPackaged && process.platform === 'win32') {
+      app.setAsDefaultProtocolClient('shiro', process.execPath, [path.resolve(path.join(__dirname, '..'))]);
+    } else {
+      app.setAsDefaultProtocolClient('shiro');
+    }
     log.info('[LIFECYCLE] Registered shiro:// protocol handler');
+  }
+
+  // On Windows, override the registry display name so the browser shows "Shiro"
+  // instead of "Electron" in the protocol confirmation dialog.
+  if (process.platform === 'win32') {
+    try {
+      const { execSync } = require('child_process');
+      execSync('reg add "HKCU\\Software\\Classes\\shiro" /ve /d "URL:Shiro" /f', { stdio: 'pipe' });
+      execSync('reg add "HKCU\\Software\\Classes\\shiro" /v "URL Protocol" /d "" /f', { stdio: 'pipe' });
+      execSync('reg add "HKCU\\Software\\Classes\\shiro\\DefaultIcon" /ve /d "Shiro" /f', { stdio: 'pipe' });
+    } catch {}
   }
 
   // --- System tray ---

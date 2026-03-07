@@ -9,7 +9,7 @@
 
 'use strict';
 
-const { execSync, spawn } = require('child_process');
+const { exec, execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -30,15 +30,16 @@ function sleep(ms) {
 // Platform-specific helpers
 // ---------------------------------------------------------------------------
 
-/** Check if any Steam client process is currently running. */
+/** Check if the main Steam client process is currently running. */
 function isSteamRunning() {
   try {
     if (IS_WIN) {
       const output = execSync(
-        'tasklist /FI "IMAGENAME eq steam.exe" /NH',
+        'tasklist /FI "IMAGENAME eq steam.exe" /FO CSV /NH',
         { encoding: 'utf8', stdio: 'pipe' }
       );
-      return output.toLowerCase().includes('steam.exe');
+      // CSV output: "steam.exe","1234",... when running; INFO message otherwise.
+      return output.toLowerCase().includes('"steam.exe"');
     } else {
       execSync('pgrep -x steam', { stdio: 'pipe' });
       return true;
@@ -101,34 +102,36 @@ async function killSteam(timeout = 5000) {
   if (!isSteamRunning()) return;
 
   // Step 1: Graceful shutdown via Steam's own command.
-  try {
-    if (IS_WIN) {
-      // Try to find steam.exe and run -shutdown.
-      const pids = _getSteamPids();
-      if (pids.length > 0) {
-        try {
-          execSync('steam.exe -shutdown', { stdio: 'pipe', timeout: 10000, shell: true });
-        } catch {
-          // If steam.exe isn't in PATH, try taskkill gracefully.
-          for (const pid of pids) {
-            try { execSync(`taskkill /PID ${pid}`, { stdio: 'pipe' }); } catch {}
-          }
-        }
-      }
-    } else {
-      execSync('steam -shutdown', { stdio: 'pipe', timeout: 10000 });
-    }
-  } catch {}
-
-  if (await _waitForExit(timeout)) return;
-
-  // Step 2: Send termination signal.
-  const pids = _getSteamPids();
   if (IS_WIN) {
-    for (const pid of pids) {
-      try { execSync(`taskkill /PID ${pid}`, { stdio: 'pipe' }); } catch {}
-    }
+    try {
+      // Find steam.exe path and run -shutdown for a clean exit.
+      const steamPids = _getSteamPids();
+      if (steamPids.length > 0) {
+        try {
+          execSync('taskkill /IM steam.exe', { stdio: 'pipe', timeout: 10000 });
+        } catch {}
+      }
+    } catch {}
   } else {
+    try {
+      execSync('steam -shutdown', { stdio: 'pipe', timeout: 10000 });
+    } catch {}
+  }
+
+  if (await _waitForExit(timeout)) {
+    // On Windows, also kill lingering steamwebhelper.exe processes.
+    if (IS_WIN) {
+      try { execSync('taskkill /F /IM steamwebhelper.exe', { stdio: 'pipe' }); } catch {}
+    }
+    return;
+  }
+
+  // Step 2: Force-kill all Steam-related processes.
+  if (IS_WIN) {
+    try { execSync('taskkill /F /IM steam.exe', { stdio: 'pipe' }); } catch {}
+    try { execSync('taskkill /F /IM steamwebhelper.exe', { stdio: 'pipe' }); } catch {}
+  } else {
+    const pids = _getSteamPids();
     for (const pid of pids) {
       try { process.kill(pid, 'SIGTERM'); } catch {}
     }
@@ -136,19 +139,14 @@ async function killSteam(timeout = 5000) {
 
   if (await _waitForExit(timeout)) return;
 
-  // Step 3: Force-kill.
-  const remaining = _getSteamPids();
-  if (IS_WIN) {
-    for (const pid of remaining) {
-      try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'pipe' }); } catch {}
-    }
-  } else {
+  // Step 3: SIGKILL (Linux only, Windows already force-killed above).
+  if (!IS_WIN) {
+    const remaining = _getSteamPids();
     for (const pid of remaining) {
       try { process.kill(pid, 'SIGKILL'); } catch {}
     }
+    if (await _waitForExit(timeout)) return;
   }
-
-  if (await _waitForExit(timeout)) return;
 
   throw new ProcessError('Failed to stop Steam after all escalation steps');
 }
@@ -210,14 +208,10 @@ function startSteam(steamRoot, extraArgs = []) {
   const exe = _findSteamExecutable(steamRoot);
 
   if (IS_WIN) {
-    // On Windows, use shell: true so that .exe is found correctly,
-    // and spawn detached so Steam runs independently.
-    const child = spawn(exe, extraArgs, {
-      detached: true,
-      stdio: 'ignore',
-      shell: true,
-    });
-    child.unref();
+    // On Windows, use 'start' via cmd.exe to launch Steam as a fully detached process.
+    // This avoids issues with spawn + paths containing spaces.
+    const args = extraArgs.length ? ' ' + extraArgs.join(' ') : '';
+    exec(`start "" "${exe}"${args}`, { stdio: 'ignore' });
   } else {
     const child = spawn(exe, extraArgs, {
       detached: true,
