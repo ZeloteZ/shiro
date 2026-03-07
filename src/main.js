@@ -52,6 +52,24 @@ function escapeDesktopExecArg(value) {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+function getLinuxProtocolExecArgs() {
+  if (!app.isPackaged) {
+    return [process.execPath, path.resolve(path.join(__dirname, '..'))];
+  }
+
+  if (process.env.APPIMAGE) {
+    return [path.resolve(process.env.APPIMAGE)];
+  }
+
+  return [process.execPath];
+}
+
+function isManagedLinuxDesktopEntry(desktopEntry) {
+  return desktopEntry.includes('X-Shiro-Managed=true')
+    || (desktopEntry.includes('Name=Shiro')
+      && desktopEntry.includes('MimeType=x-scheme-handler/shiro;'));
+}
+
 function updateLinuxProtocolMetadata() {
   if (process.platform !== 'linux') {
     return;
@@ -61,9 +79,7 @@ function updateLinuxProtocolMetadata() {
     const { execFileSync } = require('child_process');
     const applicationsDir = path.join(app.getPath('home'), '.local', 'share', 'applications');
     const desktopFilePath = path.join(applicationsDir, 'shiro.desktop');
-    const execArgs = app.isPackaged
-      ? [process.execPath]
-      : [process.execPath, path.resolve(path.join(__dirname, '..'))];
+    const execArgs = getLinuxProtocolExecArgs();
     const desktopEntry = [
       '[Desktop Entry]',
       'Name=Shiro',
@@ -75,14 +91,23 @@ function updateLinuxProtocolMetadata() {
       'Categories=Utility;',
       'Terminal=false',
       'StartupNotify=false',
+      'X-Shiro-Managed=true',
       '',
     ].join('\n');
 
     const desktopFileExists = fs.existsSync(desktopFilePath);
-    if (!desktopFileExists) {
+    const currentDesktopEntry = desktopFileExists
+      ? fs.readFileSync(desktopFilePath, 'utf8')
+      : null;
+    const shouldWriteDesktopEntry = !desktopFileExists
+      || (currentDesktopEntry !== desktopEntry && isManagedLinuxDesktopEntry(currentDesktopEntry));
+
+    if (shouldWriteDesktopEntry) {
       fs.mkdirSync(applicationsDir, { recursive: true });
       fs.writeFileSync(desktopFilePath, desktopEntry, 'utf8');
-      log.info('[LIFECYCLE] Created Linux desktop entry for shiro://');
+      log.info(desktopFileExists
+        ? '[LIFECYCLE] Updated Linux desktop entry for shiro://'
+        : '[LIFECYCLE] Created Linux desktop entry for shiro://');
     }
 
     let currentDefault = '';
@@ -100,7 +125,7 @@ function updateLinuxProtocolMetadata() {
       log.info('[LIFECYCLE] Refreshed Linux protocol handler association');
     }
 
-    if (!desktopFileExists) {
+    if (shouldWriteDesktopEntry) {
       try {
         execFileSync('update-desktop-database', [applicationsDir], {
           stdio: ['ignore', 'pipe', 'pipe'],
