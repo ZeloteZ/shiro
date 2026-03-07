@@ -261,7 +261,7 @@ async function handleLogin(protocolUrl) {
 
     // On Linux, killing Steam does NOT log out the user, so we need an
     // explicit CEF logout cycle before the actual login.
-    if (!isWindows) {
+    /*if (!isWindows) {
       // --- Step 2 (Linux): Start Steam with CEF for logout ---
       sendStatus('restarting', 'Starting Steam to sign out current account...');
       log.info(`[STEAM] Starting Steam with CEF args: ${cefArgs.join(' ')}`);
@@ -301,7 +301,7 @@ async function handleLogin(protocolUrl) {
       }
     } else {
       log.info('[STEAM] Windows: killing Steam auto-logs out – skipping CEF logout cycle');
-    }
+    }*/
 
     // --- Start Steam with CEF for login ---
     sendStatus('restarting', 'Starting Steam with remote debugging...');
