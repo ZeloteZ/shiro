@@ -156,7 +156,9 @@ update-desktop-database ~/.local/share/applications/
 
 If you still see `shiro.desktop` in `~/.local/share/applications/mimeinfo.cache`, that file is only a generated cache of available handlers. The actual default association is stored in `mimeapps.list`, and `update-desktop-database ~/.local/share/applications/` rebuilds the cache after the desktop file is removed.
 
-**Windows:** The `shiro://` protocol handler is stored in the Windows Registry under `HKCU\Software\Classes\shiro`. It is removed automatically when uninstalling Electron, or you can delete the key manually via `regedit`.
+**Windows:** The NSIS uninstaller removes the `shiro://` protocol handler automatically (`HKCU\Software\Classes\shiro`). If needed, you can still remove the key manually via `regedit`.
+
+**Linux package note:** For `.deb` installs, package removal updates the desktop cache automatically. User-level overrides in `~/.config/mimeapps.list` can still remain, so the manual cleanup commands above are still the reliable fallback.
 
 ### 2. Remove the CEF debugging marker (if it exists)
 
