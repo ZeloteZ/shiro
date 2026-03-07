@@ -49,7 +49,7 @@ function updateWindowsProtocolMetadata() {
 }
 
 function escapeDesktopExecArg(value) {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  return value.replace(/([\\\s"'`$&;<>|()*?!#[\]{}])/g, '\\$1');
 }
 
 function getLinuxProtocolExecArgs() {
@@ -64,6 +64,122 @@ function getLinuxProtocolExecArgs() {
   return [process.execPath];
 }
 
+function getLinuxApplicationsDirs() {
+  const homeDir = app.getPath('home');
+  const defaultDataHome = path.join(homeDir, '.local', 'share');
+  const xdgDataHome = process.env.XDG_DATA_HOME || defaultDataHome;
+
+  return [...new Set([
+    path.join(xdgDataHome, 'applications'),
+    path.join(defaultDataHome, 'applications'),
+  ])];
+}
+
+function hasLinuxMimeAssociation(desktopFileName = 'shiro.desktop') {
+  if (process.platform !== 'linux') {
+    return false;
+  }
+
+  const homeDir = app.getPath('home');
+  const configDir = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
+  const mimeAppsPaths = [
+    path.join(configDir, 'mimeapps.list'),
+    path.join(homeDir, '.local', 'share', 'applications', 'mimeapps.list'),
+  ];
+
+  return mimeAppsPaths.some((mimeAppsPath) => {
+    if (!fs.existsSync(mimeAppsPath)) {
+      return false;
+    }
+
+    try {
+      const content = fs.readFileSync(mimeAppsPath, 'utf8');
+      return content
+        .split(/\r?\n/)
+        .some((line) => {
+          const trimmedLine = line.trim();
+          return trimmedLine === `x-scheme-handler/shiro=${desktopFileName}`
+            || trimmedLine === `x-scheme-handler/shiro=${desktopFileName};`
+            || trimmedLine.includes(`x-scheme-handler/shiro=${desktopFileName};`);
+        });
+    } catch {
+      return false;
+    }
+  });
+}
+
+function upsertMimeAppsSection(content, sectionName, key, value) {
+  const lines = content.length ? content.split(/\r?\n/) : [];
+  const normalizedHeader = `[${sectionName}]`;
+  const updatedLines = [];
+  let currentSection = null;
+  let inserted = false;
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (/^\[.*\]$/.test(trimmedLine)) {
+      if (currentSection === sectionName && !inserted) {
+        updatedLines.push(`${key}=${value}`);
+        inserted = true;
+      }
+
+      currentSection = trimmedLine.slice(1, -1);
+      updatedLines.push(trimmedLine);
+      continue;
+    }
+
+    if (currentSection === sectionName && trimmedLine.startsWith(`${key}=`)) {
+      if (!inserted) {
+        updatedLines.push(`${key}=${value}`);
+        inserted = true;
+      }
+      continue;
+    }
+
+    updatedLines.push(line);
+  }
+
+  if (!inserted) {
+    if (updatedLines.length && updatedLines[updatedLines.length - 1] !== '') {
+      updatedLines.push('');
+    }
+    if (!updatedLines.includes(normalizedHeader)) {
+      updatedLines.push(normalizedHeader);
+    }
+    updatedLines.push(`${key}=${value}`);
+  }
+
+  return `${updatedLines.join('\n').replace(/\n{3,}/g, '\n\n')}\n`;
+}
+
+function updateLinuxMimeApps(desktopFileName = 'shiro.desktop') {
+  if (process.platform !== 'linux') {
+    return false;
+  }
+
+  try {
+    const homeDir = app.getPath('home');
+    const configDir = process.env.XDG_CONFIG_HOME || path.join(homeDir, '.config');
+    const mimeAppsPath = path.join(configDir, 'mimeapps.list');
+
+    fs.mkdirSync(configDir, { recursive: true });
+
+    let content = fs.existsSync(mimeAppsPath)
+      ? fs.readFileSync(mimeAppsPath, 'utf8')
+      : '';
+
+    content = upsertMimeAppsSection(content, 'Default Applications', 'x-scheme-handler/shiro', desktopFileName);
+    content = upsertMimeAppsSection(content, 'Added Associations', 'x-scheme-handler/shiro', `${desktopFileName};`);
+
+    fs.writeFileSync(mimeAppsPath, content, 'utf8');
+    return true;
+  } catch (error) {
+    log.warn(`[LIFECYCLE] Failed to update Linux mimeapps.list: ${error.message}`);
+    return false;
+  }
+}
+
 function isManagedLinuxDesktopEntry(desktopEntry) {
   return desktopEntry.includes('X-Shiro-Managed=true')
     || (desktopEntry.includes('Name=Shiro')
@@ -72,13 +188,12 @@ function isManagedLinuxDesktopEntry(desktopEntry) {
 
 function updateLinuxProtocolMetadata() {
   if (process.platform !== 'linux') {
-    return;
+    return false;
   }
 
   try {
     const { execFileSync } = require('child_process');
-    const applicationsDir = path.join(app.getPath('home'), '.local', 'share', 'applications');
-    const desktopFilePath = path.join(applicationsDir, 'shiro.desktop');
+    const applicationsDirs = getLinuxApplicationsDirs();
     const execArgs = getLinuxProtocolExecArgs();
     const desktopEntry = [
       '[Desktop Entry]',
@@ -95,19 +210,26 @@ function updateLinuxProtocolMetadata() {
       '',
     ].join('\n');
 
-    const desktopFileExists = fs.existsSync(desktopFilePath);
-    const currentDesktopEntry = desktopFileExists
-      ? fs.readFileSync(desktopFilePath, 'utf8')
-      : null;
-    const shouldWriteDesktopEntry = !desktopFileExists
-      || (currentDesktopEntry !== desktopEntry && isManagedLinuxDesktopEntry(currentDesktopEntry));
+    let wroteDesktopEntry = false;
+    for (const applicationsDir of applicationsDirs) {
+      const desktopFilePath = path.join(applicationsDir, 'shiro.desktop');
+      const desktopFileExists = fs.existsSync(desktopFilePath);
+      const currentDesktopEntry = desktopFileExists
+        ? fs.readFileSync(desktopFilePath, 'utf8')
+        : null;
+      const shouldWriteDesktopEntry = !desktopFileExists
+        || (currentDesktopEntry !== desktopEntry && isManagedLinuxDesktopEntry(currentDesktopEntry));
 
-    if (shouldWriteDesktopEntry) {
+      if (!shouldWriteDesktopEntry) {
+        continue;
+      }
+
       fs.mkdirSync(applicationsDir, { recursive: true });
       fs.writeFileSync(desktopFilePath, desktopEntry, 'utf8');
-      log.info(desktopFileExists
+      wroteDesktopEntry = true;
+      log.info(`${desktopFileExists
         ? '[LIFECYCLE] Updated Linux desktop entry for shiro://'
-        : '[LIFECYCLE] Created Linux desktop entry for shiro://');
+        : '[LIFECYCLE] Created Linux desktop entry for shiro://'} (${applicationsDir})`);
     }
 
     let currentDefault = '';
@@ -125,28 +247,45 @@ function updateLinuxProtocolMetadata() {
       log.info('[LIFECYCLE] Refreshed Linux protocol handler association');
     }
 
-    if (shouldWriteDesktopEntry) {
-      try {
-        execFileSync('update-desktop-database', [applicationsDir], {
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
-      } catch {}
+    updateLinuxMimeApps('shiro.desktop');
+
+    if (wroteDesktopEntry) {
+      for (const applicationsDir of applicationsDirs) {
+        try {
+          execFileSync('update-desktop-database', [applicationsDir], {
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+        } catch {}
+      }
     }
+
+    let verifiedDefault = currentDefault;
+    try {
+      verifiedDefault = execFileSync('xdg-mime', ['query', 'default', 'x-scheme-handler/shiro'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      }).trim();
+    } catch {}
+
+    return verifiedDefault === 'shiro.desktop' || hasLinuxMimeAssociation('shiro.desktop');
   } catch (error) {
     log.warn(`[LIFECYCLE] Failed to refresh Linux protocol metadata: ${error.message}`);
+    return false;
   }
 }
 
 function registerProtocolHandler({ repairIfMissing = false } = {}) {
   const shouldRegister = !app.isPackaged || repairIfMissing;
   if (!shouldRegister) {
-    return;
+    return app.isDefaultProtocolClient('shiro');
   }
 
   if (app.isDefaultProtocolClient('shiro')) {
     updateWindowsProtocolMetadata();
-    updateLinuxProtocolMetadata();
-    return;
+    const linuxRegistered = process.platform === 'linux'
+      ? updateLinuxProtocolMetadata()
+      : true;
+    return process.platform === 'linux' ? linuxRegistered : true;
   }
 
   let registered = false;
@@ -156,15 +295,27 @@ function registerProtocolHandler({ repairIfMissing = false } = {}) {
     registered = app.setAsDefaultProtocolClient('shiro');
   }
 
-  if (registered) {
-    log.info('[LIFECYCLE] Registered shiro:// protocol handler');
-    updateWindowsProtocolMetadata();
-    updateLinuxProtocolMetadata();
-    return;
+  let linuxRegistered = false;
+  if (process.platform === 'linux') {
+    linuxRegistered = updateLinuxProtocolMetadata();
   }
 
-  updateLinuxProtocolMetadata();
+  const effectiveRegistered = registered
+    || app.isDefaultProtocolClient('shiro')
+    || linuxRegistered;
+
+  if (effectiveRegistered) {
+    if (registered) {
+      log.info('[LIFECYCLE] Registered shiro:// protocol handler');
+    } else if (linuxRegistered) {
+      log.info('[LIFECYCLE] Registered shiro:// protocol handler via Linux desktop entry');
+    }
+    updateWindowsProtocolMetadata();
+    return true;
+  }
+
   log.warn('[LIFECYCLE] Failed to register shiro:// protocol handler');
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -579,7 +730,7 @@ app.whenReady().then(() => {
 
   // Installer builds should own protocol integration initially, but packaged apps
   // still repair the association when it was removed by an uninstall or upgrade.
-  registerProtocolHandler({ repairIfMissing: app.isPackaged || isRegisterMode });
+  const protocolRegistered = registerProtocolHandler({ repairIfMissing: app.isPackaged || isRegisterMode });
 
   // --- System tray ---
   const iconPath = path.join(__dirname, '..', 'assets', 'tray-icon.png');
@@ -640,8 +791,14 @@ app.whenReady().then(() => {
   } else if (isRegisterMode) {
     // Just register and exit.
     log.info('[LIFECYCLE] Mode: register-protocol only');
-    console.log('✅ Shiro protocol handler registered.');
-    console.log('   You can now use shiro:// URLs to launch Shiro.');
+    if (protocolRegistered) {
+      console.log('✅ Shiro protocol handler registered.');
+      console.log('   You can now use shiro:// URLs to launch Shiro.');
+    } else {
+      console.error('❌ Failed to register the Shiro protocol handler.');
+      console.error('   Check the logs above and your desktop environment MIME settings.');
+      process.exitCode = 1;
+    }
     app.quit();
   } else {
     // No protocol URL – show info window.
