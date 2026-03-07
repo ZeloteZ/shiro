@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Shiro 白 – Steam One-Click Login Tool",
   "author": "ZeloteZ",
+  "email": "info@zelotez.cloud",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -21,9 +22,9 @@
   "scripts": {
     "start": "electron .",
     "register": "electron . --register-protocol",
-    "dist": "electron-builder",
-    "dist:linux": "electron-builder --linux AppImage deb",
-    "dist:win": "electron-builder --win nsis",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux AppImage deb --publish never",
+    "dist:win": "electron-builder --win nsis --publish never",
     "postinstall": "node -e \"const{rcedit}=require('rcedit');const p=require('path').join(__dirname,'node_modules','electron','dist','electron.exe');const fs=require('fs');if(fs.existsSync(p))rcedit(p,{'version-string':{FileDescription:'Shiro',ProductName:'Shiro'}}).catch(()=>{})\""
   },
   "dependencies": {
