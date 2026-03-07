@@ -21,6 +21,9 @@
   "scripts": {
     "start": "electron .",
     "register": "electron . --register-protocol",
+    "dist": "electron-builder",
+    "dist:linux": "electron-builder --linux AppImage deb",
+    "dist:win": "electron-builder --win nsis",
     "postinstall": "node -e \"const{rcedit}=require('rcedit');const p=require('path').join(__dirname,'node_modules','electron','dist','electron.exe');const fs=require('fs');if(fs.existsSync(p))rcedit(p,{'version-string':{FileDescription:'Shiro',ProductName:'Shiro'}}).catch(()=>{})\""
   },
   "dependencies": {
@@ -29,7 +32,39 @@
   },
   "devDependencies": {
     "electron": "^33.0.0",
+    "electron-builder": "^26.0.12",
     "rcedit": "^5.0.2"
+  },
+  "build": {
+    "appId": "com.zelotez.shiro",
+    "productName": "Shiro",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "icon": "assets/icons",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    }
   },
   "engines": {
     "node": ">=18.0.0"

@@ -87,20 +87,55 @@ Shiro will sit in the system tray, waiting for a login request.
 If Steam is installed in a non-standard location, set the `STEAM_ROOT` environment variable:
 
 **Linux:**
+
 ```bash
 STEAM_ROOT=/path/to/steam npm start
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 $env:STEAM_ROOT="C:\path\to\Steam"; npm start
 ```
+
+## Building
+
+### Local packages
+
+Install dependencies first:
+
+```bash
+npm install
+```
+
+Build release artifacts:
+
+```bash
+npm run dist
+```
+
+Platform-specific builds:
+
+```bash
+npm run dist:linux
+npm run dist:win
+```
+
+Artifacts are written to `dist/`.
+
+> [!NOTE]
+> Electron Builder uses [assets/icon.ico](assets/icon.ico) for Windows installers and the generated PNG set in [assets/icons](assets/icons) for Linux packages.
+
+## CI builds
+
+GitHub Actions can build Linux and Windows packages automatically. The workflow runs manually via `workflow_dispatch` and on version tags such as `v0.1.0`.
 
 ## Uninstall
 
 ### 1. Remove the protocol handler
 
 **Linux:**
+
 ```bash
 xdg-mime default '' x-scheme-handler/shiro
 rm -f ~/.local/share/applications/shiro-handler.desktop
@@ -114,11 +149,13 @@ update-desktop-database ~/.local/share/applications/
 Shiro creates a `.cef-enable-remote-debugging` file in your Steam directory to enable CEF remote debugging. Remove it if you no longer need it:
 
 **Linux:**
+
 ```bash
 rm -f ~/.local/share/Steam/.cef-enable-remote-debugging
 ```
 
 **Windows:**
+
 ```powershell
 Remove-Item "$env:ProgramFiles\Steam\.cef-enable-remote-debugging" -ErrorAction SilentlyContinue
 Remove-Item "${env:ProgramFiles(x86)}\Steam\.cef-enable-remote-debugging" -ErrorAction SilentlyContinue
