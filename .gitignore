@@ -15,6 +15,8 @@ out/
 build/*
 !build/installer.nsh
 !build/deb-after-remove.sh
+packaging/aur/shiro-bin/pkg
+packaging/aur/shiro-bin/src
 
 # Electron
 .electron/
