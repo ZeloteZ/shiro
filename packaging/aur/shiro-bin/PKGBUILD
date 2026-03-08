@@ -1,5 +1,5 @@
 pkgname=shiro-bin
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc='Steam one-click login companion for Kuroi'
 arch=('x86_64')

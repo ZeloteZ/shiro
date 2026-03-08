@@ -1,6 +1,6 @@
 pkgbase = shiro-bin
 	pkgdesc = Steam one-click login companion for Kuroi
-	pkgver = 1.0.0
+	pkgver = 1.0.1
 	pkgrel = 1
 	url = https://github.com/ZeloteZ/shiro
 	arch = x86_64
@@ -23,8 +23,8 @@ pkgbase = shiro-bin
 	depends = xdg-utils
 	options = !strip
 	install = shiro-bin.install
-	source = Shiro-1.0.0.AppImage::https://github.com/ZeloteZ/shiro/releases/download/v1.0.0/Shiro-1.0.0.AppImage
-	source = LICENSE::https://raw.githubusercontent.com/ZeloteZ/shiro/v1.0.0/LICENSE
+	source = Shiro-1.0.1.AppImage::https://github.com/ZeloteZ/shiro/releases/download/v1.0.1/Shiro-1.0.01.AppImage
+	source = LICENSE::https://raw.githubusercontent.com/ZeloteZ/shiro/v1.0.1/LICENSE
 	sha256sums = SKIP
 	sha256sums = SKIP
 
